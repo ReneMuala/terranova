@@ -1,0 +1,3 @@
+[submodule "deps/supernova"]
+	path = deps/supernova
+	url = https://github.com/ReneMuala/supernova
