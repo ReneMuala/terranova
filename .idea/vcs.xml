@@ -2,5 +2,8 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/CppConsoleTable" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/ckdl" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/supernova" vcs="Git" />
   </component>
 </project>

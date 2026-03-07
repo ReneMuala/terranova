@@ -1,10 +1,14 @@
 add_rules("mode.debug", "mode.release")
-add_requires("pugixml", "fmt", "drogon", "glog")
-target("blueprint")
+add_requires("pugixml", "fmt", "drogon", "glog", "iguana", "sqlitecpp")
+target("logi")
     set_kind("binary")
+    add_defines("KDL_STATIC_LIB", "KDLPP_STATIC_LIB")
     set_languages("c++23")
-    add_packages("pugixml", "fmt", "drogon", "glog")
-    add_files("src/*.cpp")
+    add_includedirs("deps/CppConsoleTable", "deps/supernova","deps/ckdl/include","deps/ckdl/bindings/cpp/include")
+    add_packages("pugixml", "fmt", "drogon", "glog", "iguana", "sqlitecpp")
+    add_files("src/*.cpp","deps/ckdl/src/*.c",
+    -- "deps/ckdl/src/*/*.c",
+    "deps/ckdl/bindings/cpp/src/*.cpp")
 
 --
 -- If you want to known more usage about xmake, please see https://xmake.io

@@ -1,3 +1,9 @@
 [submodule "deps/supernova"]
 	path = deps/supernova
 	url = https://github.com/ReneMuala/supernova
+[submodule "deps/CppConsoleTable"]
+	path = deps/CppConsoleTable
+	url = https://github.com/DenisSamilton/CppConsoleTable
+[submodule "deps/ckdl"]
+	path = deps/ckdl
+	url = https://github.com/tjol/ckdl

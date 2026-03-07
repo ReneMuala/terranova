@@ -5,14 +5,20 @@
 # project
 cmake_minimum_required(VERSION 3.15.0)
 cmake_policy(SET CMP0091 NEW)
-project(blueprint LANGUAGES CXX)
+project(logi LANGUAGES CXX C)
 set(CURRENT_COMPILER_ID ${CMAKE_CXX_COMPILER_ID})
 
 # target
-add_executable(blueprint "")
-set_target_properties(blueprint PROPERTIES OUTPUT_NAME "blueprint")
-set_target_properties(blueprint PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/windows/x64/release")
-target_include_directories(blueprint SYSTEM PRIVATE
+add_executable(logi "")
+set_target_properties(logi PROPERTIES OUTPUT_NAME "logi")
+set_target_properties(logi PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/windows/x64/release")
+target_include_directories(logi PRIVATE
+    deps/CppConsoleTable
+    deps/supernova
+    deps/ckdl/include
+    deps/ckdl/bindings/cpp/include
+)
+target_include_directories(logi SYSTEM PRIVATE
     C:/Users/dte/AppData/Local/.xmake/packages/p/pugixml/v1.15/62451b04cb8d446fb52d4c6d38b1e19b/include
     C:/Users/dte/AppData/Local/.xmake/packages/f/fmt/12.1.0/8f0ce3998f644e1ab0b837652267d872/include
     C:/Users/dte/AppData/Local/.xmake/packages/d/drogon/v1.9.11/1d620a828fda46e5866d28107c77d75a/include
@@ -24,43 +30,48 @@ target_include_directories(blueprint SYSTEM PRIVATE
     C:/Users/dte/AppData/Local/.xmake/packages/c/c-ares/1.34.6/77af850d3a4544028f78aa740ad9914a/include
     C:/Users/dte/AppData/Local/.xmake/packages/g/glog/v0.7.1/610eac227e50484291bd9d8b01de37d6/include
     C:/Users/dte/AppData/Local/.xmake/packages/g/gflags/v2.3.0/7dc5fb5cfc7d46dc86da6ca066870286/include
+    C:/Users/dte/AppData/Local/.xmake/packages/i/iguana/1.0.9/7c88cdbeb9aa4bce90e2ed0c1f083785/include
+    C:/Users/dte/AppData/Local/.xmake/packages/f/frozen/1.2.0/ebb05b30a6e74dba9981819519433d0d/include
+    C:/Users/dte/AppData/Local/.xmake/packages/s/sqlitecpp/3.3.3/33c7042408f04a3ab8ca7543f3216206/include
 )
-target_compile_definitions(blueprint PRIVATE
+target_compile_definitions(logi PRIVATE
+    KDL_STATIC_LIB
+    KDLPP_STATIC_LIB
     TRANTOR_STATIC_DEFINE
     CARES_STATICLIB
     GLOG_NO_ABBREVIATED_SEVERITIES
     GFLAGS_IS_A_DLL=0
 )
-target_compile_options(blueprint PRIVATE
+target_compile_options(logi PRIVATE
     $<$<COMPILE_LANGUAGE:C>:-DNDEBUG>
     $<$<COMPILE_LANGUAGE:CXX>:-DNDEBUG>
     $<$<COMPILE_LANGUAGE:CXX>:/utf-8>
     $<$<COMPILE_LANGUAGE:CUDA>:-DNDEBUG>
 )
 if(CURRENT_COMPILER_ID STREQUAL "MSVC")
-    target_compile_options(blueprint PRIVATE /EHsc)
+    target_compile_options(logi PRIVATE /EHsc)
 elseif(CURRENT_COMPILER_ID STREQUAL "Clang")
-    target_compile_options(blueprint PRIVATE -fexceptions)
-    target_compile_options(blueprint PRIVATE -fcxx-exceptions)
+    target_compile_options(logi PRIVATE -fexceptions)
+    target_compile_options(logi PRIVATE -fcxx-exceptions)
 elseif(CURRENT_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(blueprint PRIVATE -fexceptions)
+    target_compile_options(logi PRIVATE -fexceptions)
 endif()
-set_target_properties(blueprint PROPERTIES CXX_EXTENSIONS OFF)
-target_compile_features(blueprint PRIVATE cxx_std_23)
+set_target_properties(logi PROPERTIES CXX_EXTENSIONS OFF)
+target_compile_features(logi PRIVATE cxx_std_23)
 if(CURRENT_COMPILER_ID STREQUAL "MSVC")
-    target_compile_options(blueprint PRIVATE $<$<CONFIG:Release>:-O2>)
+    target_compile_options(logi PRIVATE $<$<CONFIG:Release>:-O2>)
 else()
-    target_compile_options(blueprint PRIVATE -O3)
+    target_compile_options(logi PRIVATE -O3)
 endif()
 if(CURRENT_COMPILER_ID STREQUAL "MSVC")
 else()
-    target_compile_options(blueprint PRIVATE -fvisibility=hidden)
+    target_compile_options(logi PRIVATE -fvisibility=hidden)
 endif()
 if(CURRENT_COMPILER_ID STREQUAL "MSVC")
-    set_property(TARGET blueprint PROPERTY
+    set_property(TARGET logi PROPERTY
         MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
 endif()
-target_link_libraries(blueprint PRIVATE
+target_link_libraries(logi PRIVATE
     pugixml
     fmt
     drogon
@@ -75,6 +86,8 @@ target_link_libraries(blueprint PRIVATE
     cares
     glog
     gflags_static
+    sqlite3
+    SQLiteCpp
     ws2_32
     rpcrt4
     crypt32
@@ -84,7 +97,7 @@ target_link_libraries(blueprint PRIVATE
     dbghelp
     shlwapi
 )
-target_link_directories(blueprint PRIVATE
+target_link_directories(logi PRIVATE
     C:/Users/dte/AppData/Local/.xmake/packages/p/pugixml/v1.15/62451b04cb8d446fb52d4c6d38b1e19b/lib
     C:/Users/dte/AppData/Local/.xmake/packages/f/fmt/12.1.0/8f0ce3998f644e1ab0b837652267d872/lib
     C:/Users/dte/AppData/Local/.xmake/packages/d/drogon/v1.9.11/1d620a828fda46e5866d28107c77d75a/lib
@@ -96,9 +109,21 @@ target_link_directories(blueprint PRIVATE
     C:/Users/dte/AppData/Local/.xmake/packages/c/c-ares/1.34.6/77af850d3a4544028f78aa740ad9914a/lib
     C:/Users/dte/AppData/Local/.xmake/packages/g/glog/v0.7.1/610eac227e50484291bd9d8b01de37d6/lib
     C:/Users/dte/AppData/Local/.xmake/packages/g/gflags/v2.3.0/7dc5fb5cfc7d46dc86da6ca066870286/lib
+    C:/Users/dte/AppData/Local/.xmake/packages/s/sqlitecpp/3.3.3/33c7042408f04a3ab8ca7543f3216206/lib
 )
-# private sourcefiles from sourcebatch c++.build for target blueprint
-target_sources(blueprint PRIVATE 
+# private sourcefiles from sourcebatch c++.build for target logi
+target_sources(logi PRIVATE 
     src/main.cpp
+    deps/ckdl/bindings/cpp/src/kdlpp.cpp
+)
+# private sourcefiles from sourcebatch c.build for target logi
+target_sources(logi PRIVATE 
+    deps/ckdl/src/bigint.c
+    deps/ckdl/src/compat.c
+    deps/ckdl/src/emitter.c
+    deps/ckdl/src/parser.c
+    deps/ckdl/src/str.c
+    deps/ckdl/src/tokenizer.c
+    deps/ckdl/src/utf8.c
 )
 
