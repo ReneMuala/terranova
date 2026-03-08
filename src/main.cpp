@@ -530,6 +530,7 @@ namespace db
             {"file", "BLOB"},
             {"date", "DATE"},
             {"datetime", "DATETIME"},
+            {"bool", "BOOL"},
         };
         const auto result = types.find(name);
         if (result != types.end())
@@ -537,7 +538,7 @@ namespace db
             return result->second;
         }
         {
-            std::string error_msg = fmt::format("type \"{}\" is not supported. Available type: ", name);
+            std::string error_msg = fmt::format("type \"{}\" is not supported. Available types: ", name);
             for (auto& type : types)
             {
                 error_msg += fmt::format("{}({}), ", type.first, type.second);
@@ -733,6 +734,46 @@ namespace db
         SQLite::Statement prepared_stmt(database, stmt);
     }
 
+    bool contains(const std::string & target, const std::vector<param> & params)
+    {
+        std::string target_name = target.substr(1);
+        for (auto& param : params)
+        {
+            if (param.name == target_name)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void check_query_param_types(const std::vector<param> & params)
+    {
+        for (const auto& param : params)
+        {
+            get_sql_type(param.type);
+        }
+    }
+
+    void init_stmt_custom(const SQLite::Database& database, const entity& entity, std::string name,std::string stmt, const std::vector<param> & params)
+    {
+        stmt = std::regex_replace(stmt, std::regex(R"(\{table\})"), entity.name);
+        LOG(INFO) << fmt::format("prepare custom statement (\"{}\") \"{}\"", name,stmt);
+        std::regex param_regex(R"(:\w+)");
+        std::sregex_iterator begin = std::sregex_iterator(stmt.begin(), stmt.end(), param_regex);
+        std::sregex_iterator end;
+        check_query_param_types(params);
+        for (auto i = begin; i != end; ++i)
+        {
+            const std::string param = (*i).str();
+            if (not contains(param, params))
+            {
+                throw std::invalid_argument(fmt::format("query param \"{}\" is not specified", param));
+            }
+        }
+        SQLite::Statement prepared_stmt(database, stmt);
+    }
+
     void init_persistence(const std::vector<application>& apps)
     {
         for (auto& app : apps)
@@ -755,6 +796,14 @@ namespace db
                     init_stmt_delete(database, entity, entity_ref_map);
                 else
                     LOG(WARNING) <<  fmt::format("could not generate delete statement for \"{}\", reason: no pk", entity.name);
+                for (const auto& query : entity.queries.get)
+                    init_stmt_custom(database, entity, query.name, query.sql, query.params);
+                for (const auto& query : entity.queries.post)
+                    init_stmt_custom(database, entity, query.name, query.sql, query.params);
+                for (const auto& query : entity.queries.put)
+                    init_stmt_custom(database, entity, query.name, query.sql, query.params);
+                for (const auto& query : entity.queries.delete_)
+                    init_stmt_custom(database, entity, query.name, query.sql, query.params);
             }
         }
     }

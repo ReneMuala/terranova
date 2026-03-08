@@ -17,12 +17,14 @@ application "Todo" version="0.1" {
         }
     }
 
-
     entity "Todo" {
         schema {
             pk "ID" type="int"
             field "Title" type="string"
             field "status" type="string"
+            field "created_at" type="datetime"
+            field "due" type="datetime"
+            field "is_done" type="bool"
             field "attachment" type="file" {
                 file-options accept=".pdf" \
                 max-size=5e3 \
