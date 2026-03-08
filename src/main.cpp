@@ -548,7 +548,7 @@ namespace db
         }
     }
 
-    inline const std::string throw_if_invalid_identifier(const std::string identifier)
+    inline std::string throw_if_invalid_identifier(const std::string& identifier)
     {
         if (std::regex_match(identifier, std::regex(R"(\w+)")))
         {
@@ -621,11 +621,116 @@ namespace db
         database.exec(stmt);
     }
 
-    void init_stmt_select(SQLite::Database& database, const entity& entity, const std::unordered_map<std::string, std::optional<std::reference_wrapper<const ::entity>>> & em)
+    void init_stmt_select(const SQLite::Database& database, const entity& entity, const std::unordered_map<std::string, std::optional<std::reference_wrapper<const ::entity>>> & em)
     {
-        auto code = fmt::format("SELECT {0}.* FROM {0};", throw_if_invalid_identifier(tolower(entity.name)));
-        SQLite::Statement stmt(database, code);
-        LOG(INFO) << fmt::format("prepare statement \"{}\"", code);
+        auto stmt = fmt::format("SELECT {0}.* FROM {0};", throw_if_invalid_identifier(tolower(entity.name)));
+        SQLite::Statement prepared_stmt(database, stmt);
+        LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
+    }
+
+    inline std::string with_comma_suffix(const std::string & name)
+    {
+        return name+",";
+    }
+
+    inline std::string with_comma_suffix_colon_prefix(const std::string & name)
+    {
+        return ":"+name+",";
+    }
+
+    void init_stmt_insert(const SQLite::Database& database, const entity& entity, const std::unordered_map<std::string, std::optional<std::reference_wrapper<const ::entity>>> & em)
+    {
+        std::string stmt = fmt::format("INSERT INTO {} ", throw_if_invalid_identifier(tolower(entity.name)));
+        std::string values, value_fields;
+
+        bool fields = false;
+        for (auto& field : entity.schema.fields)
+        {
+            if (not fields) fields = true;
+            values.append(with_comma_suffix(throw_if_invalid_identifier(tolower(field.name))));
+            value_fields.append(with_comma_suffix_colon_prefix(throw_if_invalid_identifier(tolower(field.name))));
+        }
+        auto handle_relationship = [&](const auto& rel)
+        {
+            const std::string& it = throw_if_invalid_identifier(tolower(second_if_empty(rel.alias, rel.name)));
+            if (not fields) fields = true;
+            if constexpr (std::is_same_v<decltype(rel), const belongs_to&>)
+            {
+                values.append(with_comma_suffix(fmt::format("{}_id", it)));
+                value_fields.append(with_comma_suffix_colon_prefix(fmt::format("{}_id", it)));
+            }
+        };
+        for (auto& rel : entity.schema.has_one)
+            handle_relationship(rel);
+        for (auto& rel : entity.schema.has_many)
+            handle_relationship(rel);
+        for (auto& rel : entity.schema.belongs_to)
+            handle_relationship(rel);
+        if (fields)
+            stmt.pop_back();
+        if (not values.empty())
+        {
+            values.pop_back();
+            value_fields.pop_back();
+        }
+        stmt = fmt::format("{} ({}) VALUES({});", stmt, values, value_fields);
+        LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
+        SQLite::Statement prepared_stmt(database, stmt);
+    }
+
+    inline std::string form_set_statement(const std::string & name)
+    {
+        return fmt::format("{0} = :{0},", name);
+    }
+
+    void init_stmt_update(const SQLite::Database& database, const entity& entity, const std::unordered_map<std::string, std::optional<std::reference_wrapper<const ::entity>>> & em)
+    {
+        std::string sets;
+        bool fields = false;
+        for (auto& field : entity.schema.fields)
+        {
+            if (not fields) fields = true;
+            sets.append(form_set_statement(throw_if_invalid_identifier(tolower(field.name))));
+        }
+        auto handle_relationship = [&](const auto& rel)
+        {
+            const std::string& it = throw_if_invalid_identifier(tolower(second_if_empty(rel.alias, rel.name)));
+            if (not fields) fields = true;
+            if constexpr (std::is_same_v<decltype(rel), const belongs_to&>)
+            {
+                sets.append(form_set_statement(throw_if_invalid_identifier(tolower(fmt::format("{}_id", it)))));
+            }
+        };
+        for (auto& rel : entity.schema.has_one)
+            handle_relationship(rel);
+        for (auto& rel : entity.schema.has_many)
+            handle_relationship(rel);
+        for (auto& rel : entity.schema.belongs_to)
+            handle_relationship(rel);
+        if (not sets.empty())
+        {
+            sets.pop_back();
+        }
+        std::string pk_name;
+        if (entity.schema.pk)
+        {
+            pk_name = throw_if_invalid_identifier(tolower(entity.schema.pk->name));
+        }
+        std::string stmt = fmt::format("UPDATE {0} SET {1} WHERE {2} = :{2};", throw_if_invalid_identifier(tolower(entity.name)), sets, pk_name);
+        LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
+        SQLite::Statement prepared_stmt(database, stmt);
+    }
+
+    void init_stmt_delete(const SQLite::Database& database, const entity& entity, const std::unordered_map<std::string, std::optional<std::reference_wrapper<const ::entity>>> & em)
+    {
+        std::string pk_name;
+        if (entity.schema.pk)
+        {
+            pk_name = throw_if_invalid_identifier(tolower(entity.schema.pk->name));
+        }
+        std::string stmt = fmt::format("DELETE FROM {0} WHERE {1} = :{1};", throw_if_invalid_identifier(tolower(entity.name)), pk_name);
+        LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
+        SQLite::Statement prepared_stmt(database, stmt);
     }
 
     void init_persistence(const std::vector<application>& apps)
@@ -635,11 +740,21 @@ namespace db
             SQLite::Database database(fmt::format("{}.sqlite", throw_if_invalid_identifier(app.name)), SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
             std::unordered_map<std::string, std::optional<std::reference_wrapper<const entity>>> entity_ref_map;
             for (auto& entity : app.entity)
-                entity_ref_map[throw_if_invalid_identifier(tolower(entity.name))] = std::ref(entity);
+                entity_ref_map.emplace(throw_if_invalid_identifier(tolower(entity.name)), std::ref(entity));
             for (auto& entity : app.entity)
             {
+                LOG(INFO) << fmt::format("generating queries for \"{}\"", entity.name);
                 init_entity(database, entity, entity_ref_map);
                 init_stmt_select(database, entity, entity_ref_map);
+                init_stmt_insert(database, entity, entity_ref_map);
+                if (entity.schema.pk)
+                    init_stmt_update(database, entity, entity_ref_map);
+                else
+                    LOG(WARNING) <<  fmt::format("could not generate update statement for \"{}\", reason: no pk", entity.name);
+                if (entity.schema.pk)
+                    init_stmt_delete(database, entity, entity_ref_map);
+                else
+                    LOG(WARNING) <<  fmt::format("could not generate delete statement for \"{}\", reason: no pk", entity.name);
             }
         }
     }
@@ -647,6 +762,10 @@ namespace db
 
 int main(int argc, char** argv) try
 {
+    /*
+    fmt::println(R"(╻  ┏━┓┏━╸╻
+┃  ┃ ┃┃╺┓┃
+┗━╸┗━┛┗━┛╹)");*/
     FLAGS_minloglevel = 0;
     FLAGS_logtostderr = true;
     FLAGS_stderrthreshold = 0;
@@ -656,7 +775,7 @@ int main(int argc, char** argv) try
     {
         LOG(FATAL) << "Could not open simple.xml";
     }
-    std::u8string content(
+    const std::u8string content(
         (std::istreambuf_iterator<char>(file)),
         std::istreambuf_iterator<char>()
     );
