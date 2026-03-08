@@ -1,0 +1,57 @@
+application "Todo" version="0.1" {
+    auth provider="User" identity="name" secret="password"
+    entity "User" {
+        schema {
+            pk "id" type="int"
+            field "name" type="string"
+            field "email" type="string"
+            has-many "Todo" as="tasks" on-delete="cascade"
+        }
+    }
+
+    entity "Test" {
+        schema {
+            field "name" type="string"
+            field "email" type="string"
+            has-many "Todo" as="tasks" on-delete="cascade"
+        }
+    }
+
+
+    entity "Todo" {
+        schema {
+            pk "ID" type="int"
+            field "Title" type="string"
+            field "status" type="string"
+            field "attachment" type="file" {
+                file-options accept=".pdf" \
+                max-size=5e3 \
+                folder="task_files/"
+            }
+            belongs-to "User" as="owner"
+        }
+
+        hooks {
+            before "create" script="scripts/todo_rules.lua" fn="check_limit"
+            after "delete" script="scripts/todo_rules.lua" fn="update_counts"
+            before "overdue" script="scripts/todo_rules.lua" fn="preprocess_params"
+        }
+
+        queries {
+            get "ovedue" sql="SELECT * FROM {table} WHERE is_done = 0 AND created_at < DATE('now', '-7 days')"
+            put "update title" sql="UPDATE {table} SET title = :title" {
+                param "title" type="string"
+            }
+            get "todos_from_date" sql="SELECT * FROM {table} WHERE due = :date" {
+                param "date" type="date"
+            }
+        }
+    }
+    profile "dev" default=true {
+        listen address="0.0.0.0" port=80
+    }
+    profile "prod" {
+        listen address="localhost" port=80
+        listen address="0.0.0.0" port=443 cert="example.crt" key="example.key"
+    }
+}
