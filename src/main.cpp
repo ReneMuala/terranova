@@ -159,7 +159,7 @@ struct generated_implementation
     std::string route;
     std::string method;
     std::string code;
-    void * prepared_statement {};
+    void* prepared_statement{};
 };
 
 struct auth
@@ -816,6 +816,7 @@ namespace db
         if (entity.schema.pk)
         {
             pk_name = throw_if_invalid_identifier(tolower(entity.schema.pk->name));
+            params.emplace_back(pk_name, get_c_type(entity.schema.pk->type));
         }
         std::string stmt = fmt::format("UPDATE {0} SET {1} WHERE {2} = :{2};",
                                        throw_if_invalid_identifier(tolower(entity.name)), sets, pk_name);
@@ -836,9 +837,11 @@ namespace db
                                                  em)
     {
         std::string pk_name;
+        std::vector<param> params;
         if (entity.schema.pk)
         {
             pk_name = throw_if_invalid_identifier(tolower(entity.schema.pk->name));
+            params.emplace_back(pk_name, get_c_type(entity.schema.pk->type));
         }
         std::string stmt = fmt::format("DELETE FROM {0} WHERE {1} = :{1};",
                                        throw_if_invalid_identifier(tolower(entity.name)), pk_name);
@@ -847,9 +850,8 @@ namespace db
             .route = to_route(entity.name),
             .method = "delete",
             .statement = SQLite::Statement(database, stmt),
-            .params = {
-                {"id", "int"}
-            }
+            .params = params,
+            .data_provider = prepared_statement_metadata::url_params
         };
     }
 
@@ -961,16 +963,16 @@ namespace svc
         exit(0);
     }
 
-    struct service
+    struct cjit
     {
         std::string name;
         TCCState* state = nullptr;
-        service(const service&) = delete;
-        service& operator=(const service&) = delete;
-        service(service&&) = default;
-        service& operator=(service&&) = default;
+        cjit(const cjit&) = delete;
+        cjit& operator=(const cjit&) = delete;
+        cjit(cjit&&) = default;
+        cjit& operator=(cjit&&) = default;
 
-        explicit service(const std::string name) : name(name)
+        explicit cjit(const std::string name) : name(name)
         {
             state = tcc_new();
             // tcc_set_lib_path(state, ".");
@@ -1007,7 +1009,7 @@ namespace svc
             }
         }
 
-        ~service()
+        ~cjit()
         {
             if (state)
                 tcc_delete(state);
@@ -1067,10 +1069,12 @@ namespace svc
                         param.name);
                     if (stat.data_provider == prepared_statement_metadata::url_params)
                         uri_param_handler_def += fmt::format(
-                            R"(if (strncmp(key, "{0}", {1}) == 0) {{  params->{0} = duplicate_string(value); /* {2} */ }})", param.name,
+                            R"(if (strncmp(key, "{0}", {1}) == 0) {{  params->{0} = duplicate_string(value); /* {2} */ }})",
+                            param.name,
                             param.name.size(), param.type);
                     else if (stat.data_provider == prepared_statement_metadata::request_body)
-                        request_body_handler_def += fmt::format(R"(collect_const_char("{0}", (void**)&params->{0}, ib);)", param.name);
+                        request_body_handler_def += fmt::format(
+                            R"(collect_const_char("{0}", (void**)&params->{0}, ib);)", param.name);
                     destructor = fmt::format("if(input.{0})free((void*)input.{0});", param.name);
                 }
                 else if (param.type == "int")
@@ -1083,7 +1087,8 @@ namespace svc
                             R"(if (strncmp(key, "{0}", {1}) == 0) params->{0} = atoi(value); /* {2} */)", param.name,
                             param.name.size(), param.type);
                     else if (stat.data_provider == prepared_statement_metadata::request_body)
-                        request_body_handler_def += fmt::format(R"(collect_int("{0}", (void*)&params->{0}, ib);)", param.name);
+                        request_body_handler_def += fmt::format(R"(collect_int("{0}", (void*)&params->{0}, ib);)",
+                                                                param.name);
                 }
                 else if (param.type == "float")
                 {
@@ -1095,7 +1100,8 @@ namespace svc
                             R"(if (strncmp(key, "{0}", {1}) == 0) params->{0} = (float)atof(value); /* {2} */)",
                             param.name, param.name.size(), param.type);
                     else if (stat.data_provider == prepared_statement_metadata::request_body)
-                        request_body_handler_def += fmt::format(R"(collect_float("{0}", (void*)&params->{0}, ib);)", param.name);
+                        request_body_handler_def += fmt::format(R"(collect_float("{0}", (void*)&params->{0}, ib);)",
+                                                                param.name);
                 }
                 else if (param.type == "bool")
                 {
@@ -1107,7 +1113,8 @@ namespace svc
                             R"(if (strncmp(key, "{0}", {1}) == 0) params->{0} = atob(value); /* {2} */)", param.name,
                             param.name.size(), param.type);
                     else if (stat.data_provider == prepared_statement_metadata::request_body)
-                        request_body_handler_def += fmt::format(R"(collect_bool("{0}", (void*)&params->{0}, ib);)", param.name);
+                        request_body_handler_def += fmt::format(R"(collect_bool("{0}", (void*)&params->{0}, ib);)",
+                                                                param.name);
                 }
                 else
                     throw std::runtime_error(fmt::format(
@@ -1128,14 +1135,16 @@ namespace svc
         std::string body_def;
         if (stat.data_provider == prepared_statement_metadata::url_params and not stat.params.empty())
             body_def = fmt::format(
-                "struct _{0} input;{1}if(get_uri_params(route, uri_parameter_handler_{0}, &input, context)){{ {2} return result; }}", id, constructor,
-                prepared_statement_usage+destructor);
+                "struct _{0} input;{1}if(get_uri_params(route, uri_parameter_handler_{0}, &input, context)){{ {2} return result; }}",
+                id, constructor,
+                prepared_statement_usage + destructor);
         else if (stat.data_provider == prepared_statement_metadata::request_body and not stat.params.empty())
             body_def = fmt::format(
-                "struct _{0} input;{1}if(get_request_body(body, body_len, request_body_handler_{0}, &input, context)){{ {2} return result; }}", id,constructor,
-                prepared_statement_usage+destructor);
+                "struct _{0} input;{1}if(get_request_body(body, body_len, request_body_handler_{0}, &input, context)){{ {2} return result; }}",
+                id, constructor,
+                prepared_statement_usage + destructor);
         else
-            body_def = constructor+prepared_statement_usage+destructor+"return result;";
+            body_def = constructor + prepared_statement_usage + destructor + "return result;";
         return generated_implementation{
             .name = fmt::format("handler_{0}", id),
             .route = stat.route,
@@ -1147,7 +1156,8 @@ namespace svc
         };
     }
 
-    std::pair<std::vector<generated_implementation>, std::string> init_services(std::vector<prepared_statement_metadata>& queries)
+    std::pair<std::vector<generated_implementation>, std::string> init_services(
+        std::vector<prepared_statement_metadata>& queries)
     {
         std::string code = R"(
 typedef unsigned long long size_t;
@@ -1331,6 +1341,19 @@ void collect_const_char(const char* name, void** output_buffer, void* input_buff
 
 typedef bool (*output_handler_t)(void* obj, void* ou, void* in);
 
+int to_sqlite_type(const std::string& name)
+{
+    if (name == "INTEGER")
+        return SQLite::INTEGER;
+    if (name == "FLOAT")
+        return SQLite::FLOAT;
+    if (name == "TEXT")
+        return SQLite::TEXT;
+    if (name == "BLOB")
+        return SQLite::BLOB;
+    return SQLite::TEXT;
+}
+
 const char* prepared_statement_get_results_json(void* prepared_statement)
 {
     SQLite::Statement* stat = (SQLite::Statement*)prepared_statement;
@@ -1338,38 +1361,26 @@ const char* prepared_statement_get_results_json(void* prepared_statement)
     yyjson_mut_val* output_root = yyjson_mut_obj(output_doc);
     yyjson_mut_doc_set_root(output_doc, output_root);
     yyjson_mut_val* data_arr = yyjson_mut_arr(output_doc);
-    bool first = true;
-    std::vector<std::pair<std::string, std::string>> meta;
     unsigned long long count = 0;
+    int col_count = -1;
     while (stat->executeStep())
     {
+        if (col_count == -1)
+            col_count = stat->getColumnCount();
         count++;
         yyjson_mut_val* data_item = yyjson_mut_obj(output_doc);
-        if (first)
+        for (int i = 0; i < col_count; ++i)
         {
-            for (int i = 0; i < stat->getColumnCount(); ++i)
-            {
-                try
-                {
-                    meta.emplace_back(make_pair(std::string(stat->getColumnName(i)),
-                                            std::string(stat->getColumnDeclaredType(i))));
-                } catch (std::exception& ex)
-                {
-                    meta.emplace_back(make_pair(std::string(stat->getColumnName(i)),
-                                            std::string("TEXT")));
-                }
-            }
-            first = false;
-        }
-        for (int i = 0; i < meta.size(); ++i)
-        {
-            if (meta[i].second == "INTEGER")
-                yyjson_mut_obj_add_int(output_doc, data_item, meta[i].first.c_str(), stat->getColumn(i).getInt());
-            else if (meta[i].second == "REAL")
-                yyjson_mut_obj_add_double(output_doc, data_item, meta[i].first.c_str(), stat->getColumn(i).getDouble());
-            else if (meta[i].second == "TEXT" or meta[i].second == "BLOB" or meta[i].second == "DATE" or meta[i].second
-                == "DATETIME")
-                yyjson_mut_obj_add_strcpy(output_doc, data_item, meta[i].first.c_str(), stat->getColumn(i).getText());
+            const auto& column = stat->getColumn(i);
+            const auto type = column.getType();
+            if (type == SQLite::INTEGER)
+                yyjson_mut_obj_add_int(output_doc, data_item, column.getName(), stat->getColumn(i).getInt());
+            else if (type == SQLite::FLOAT)
+                yyjson_mut_obj_add_double(output_doc, data_item, column.getName(), stat->getColumn(i).getDouble());
+            else if (type == SQLite::TEXT or type == SQLite::BLOB)
+                yyjson_mut_obj_add_strcpy(output_doc, data_item, column.getName(), stat->getColumn(i).getText());
+            else if (type == SQLite::Null)
+                yyjson_mut_obj_add_null(output_doc, data_item, column.getName());
         }
         yyjson_mut_arr_add_val(data_arr, data_item);
     }
@@ -1411,8 +1422,10 @@ bool get_request_body(const char* body, int body_len, request_body_handler_t cal
     error_handler(__FUNCTION__, "failed to parse request body as json", context);
     return false;
 }
+
 typedef bool (*uri_parameter_handler_t)(const char* key, const char* value, void* userdata,
                                         void* context);
+
 bool get_uri_params(const char* uri_text, uri_parameter_handler_t callback, void* userdata,
                     void* context)
 {
@@ -1568,7 +1581,7 @@ char* handler_route_params(const char* route, void* context)
     return 0;
 }
 
-typedef char* (*handler_t)(void * prepared_statement, const char* route, void* context, const char* body, int body_len);
+typedef char* (*handler_t)(void* prepared_statement, const char* route, void* context, const char* body, int body_len);
 
 char* handler_json_request(const char* route, void* context, const char* body, int body_len)
 {
@@ -1591,24 +1604,24 @@ char* handler_json_request(const char* route, void* context, const char* body, i
     return 0;
 }
 
-drogon::HttpMethod to_drogon_http_method(const std::string & method)
+drogon::HttpMethod to_drogon_http_method(const std::string& method)
 {
     if (method == "post")
-        return  drogon::Post;
+        return drogon::Post;
     if (method == "put")
-        return  drogon::Put;
+        return drogon::Put;
     if (method == "get")
-        return  drogon::Get;
+        return drogon::Get;
     if (method == "delete")
-        return  drogon::Delete;
+        return drogon::Delete;
     if (method == "patch")
-        return  drogon::Patch;
+        return drogon::Patch;
     if (method == "options")
-        return  drogon::Options;
+        return drogon::Options;
     return drogon::Invalid;
 }
 
-void log_message(const char * message)
+void log_message(const char* message)
 {
     LOG(INFO) << message;
 }
@@ -1630,19 +1643,19 @@ int main(int argc, char** argv) try
     auto file = std::ifstream("simple.kdl");
     if (!file.is_open())
         LOG(FATAL) << "Could not open simple.xml";
-    const std::u8string content(
+    std::u8string content(
         (std::istreambuf_iterator<char>(file)),
         std::istreambuf_iterator<char>()
     );
 
     file.close();
     // std::cout << std::string(reinterpret_cast<const char*>(content.data()),content.size()) << std::endl;
-    auto document = kdl::parse(content);
+    std::optional<kdl::Document> document = kdl::parse(content);
     std::vector<application> apps;
-    load(document, apps);
+    load(document.value(), apps);
     std::vector<prepared_statement_metadata> prepared_statements = db::init_statements(apps);
-    auto services = svc::init_services(prepared_statements);
-    svc::service service_layer("generated_service_layer_1.c");
+    auto init_result = svc::init_services(prepared_statements);
+    svc::cjit service_layer("generated_service_layer_1.c");
     service_layer.push("log", log_message);
     service_layer.push("log_address", log_address);
     service_layer.push("duplicate_string", _strdup);
@@ -1665,90 +1678,33 @@ int main(int argc, char** argv) try
     service_layer.push("error_handler", error_handler);
     service_layer.push("get_uri_params", get_uri_params);
     service_layer.push("get_request_body", get_request_body);
-    service_layer.compile(services.second);
-    LOG(INFO) << fmt::format("generated & compiled {} services successfully", services.first.size());
-    for (auto & impl : services.first)
+    service_layer.compile(init_result.second);
+    LOG(INFO) << fmt::format("generated & compiled {} services successfully", init_result.first.size());
+    for (auto& impl : init_result.first)
     {
         LOG(INFO) << fmt::format("{} {} -> {}(...)", impl.method, impl.route, impl.name);
         service_layer.push("get_request_body", get_request_body);
         handler_t handler = (handler_t)service_layer.peek(impl.name);
-        void * prepared_stat = impl.prepared_statement;
+        void* prepared_stat = impl.prepared_statement;
 
-        drogon::app().registerHandler(impl.route, [handler, prepared_stat](const drogon::HttpRequestPtr& req, Callback&& callback)
-    {
-        auto resp = drogon::HttpResponse::newHttpResponse();
-        if (auto _r0 = handler(prepared_stat, ("/?" + req->getQuery()).c_str(), (void*)resp.get(), req->getBody().data(), req->getBody().size()))
-        {
-            resp->setBody(_r0);
-            resp->setContentTypeCode(drogon::ContentType::CT_APPLICATION_JSON);
-            free((void*)_r0);
-        }
-        else
-        {
-            LOG(WARNING) << "null body resp";
-        }
-        callback(resp);
-    }, {to_drogon_http_method(impl.method)});
+        drogon::app().registerHandler(
+            impl.route, [handler, prepared_stat](const drogon::HttpRequestPtr& req, Callback&& callback)
+            {
+                auto resp = drogon::HttpResponse::newHttpResponse();
+                if (auto _r0 = handler(prepared_stat, ("/?" + req->getQuery()).c_str(), (void*)resp.get(),
+                                       req->getBody().data(), req->getBody().size()))
+                {
+                    resp->setBody(_r0);
+                    resp->setContentTypeCode(drogon::ContentType::CT_APPLICATION_JSON);
+                    free((void*)_r0);
+                }
+                callback(resp);
+            }, {to_drogon_http_method(impl.method)});
     }
-    // for (auto & statement : prepared_statements)
-    // {
-    //     LOG(INFO) << fmt::format("sta \"{}\"", statement.statement.getQuery());
-    //     for (auto & param : statement.params)
-    //     {
-    //         LOG(INFO) << fmt::format("param \"{}\"", param.name);
-    //     }
-    // }
-    svc::service service("greeter");
-    service.push("native", native);
-    service.push("strcpy", strcpy);
-    service.compile(R"(
-        char* strcpy(
-            char* _Destination,
-            char const* _Source);
-        char buffer[512];
-        const char* handler(){
-            strcpy(buffer, "hello logi world");
-            return buffer;
-        }
-    )");
-
-    const char* (*handler)() = (const char *(*)())service.peek("handler");
-
-    if (handler)
-    {
-        drogon::app().registerHandler("/", [handler](const drogon::HttpRequestPtr& req, Callback&& callback)
-        {
-            auto resp = drogon::HttpResponse::newHttpResponse();
-            resp->setBody(handler());
-            callback(resp);
-        });
-    }
-    drogon::app().registerHandler("/route_params/", [handler](const drogon::HttpRequestPtr& req, Callback&& callback)
-    {
-        auto resp = drogon::HttpResponse::newHttpResponse();
-        if (auto _r0 = handler_route_params(("/?" + req->getQuery()).c_str(), (void*)resp.get()))
-        {
-            resp->setBody(_r0);
-            resp->setContentTypeCode(drogon::ContentType::CT_APPLICATION_JSON);
-            free((void*)_r0);
-        }
-        callback(resp);
-    }, {drogon::Get});
-    drogon::app().registerHandler("/body_params/", [handler](const drogon::HttpRequestPtr& req, Callback&& callback)
-    {
-        auto resp = drogon::HttpResponse::newHttpResponse();
-        if (auto _r0 = handler_json_request(NULL, (void*)resp.get(), req->getBody().data(), req->getBody().size()))
-        {
-            resp->setBody(_r0);
-            resp->setContentTypeCode(drogon::ContentType::CT_APPLICATION_JSON);
-            free((void*)_r0);
-        }
-        else
-        {
-            std::cout << "null body resp";
-        }
-        callback(resp);
-    }, {drogon::Post});
+    init_result.second.clear();
+    document.reset();
+    content.clear();
+    apps.clear();
     drogon::app()
         // .setServerHeaderField("logi/drogon"+drogon::getVersion())
         .addListener("0.0.0.0", 80)
