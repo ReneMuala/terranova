@@ -9,6 +9,8 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <libtcc/libtcc.h>
 #include <yyjson.h>
+#include <drogon/drogon_callbacks.h>
+
 #include "uriparser/Uri.h"
 std::unordered_map<std::string, std::any> handlers;
 
@@ -1510,6 +1512,35 @@ std::string get_error_page(const std::string& location, const std::string& descr
 
 #include <drogon/drogon.h>
 
+
+namespace srv
+{
+    void init_listeners(const std::vector<application> & apps,const std::string & select_profile)
+    {
+        bool registered = false;
+        for (const auto & app : apps)
+        {
+            for (const auto & profile : app.profile)
+            {
+                if (profile.name == select_profile or (select_profile.empty() and profile.default_))
+                {
+                    for (const auto & listen : profile.listen)
+                    {
+                        if (not registered) registered = true;
+                        LOG(INFO) << fmt::format("profile:{} adding listener {}:{}", profile.name, listen.address, listen.port);
+                        drogon::app().addListener(listen.address, listen.port, not listen.cert.empty(), listen.cert, listen.key);
+                    }
+                }
+            }
+        }
+        if (not registered)
+        {
+            LOG(FATAL) << "no listener provided, please setup or select a profile";
+        }
+    }
+}
+
+
 using Callback = std::function<void (const drogon::HttpResponsePtr&)>;
 
 struct req_params
@@ -1556,8 +1587,23 @@ void error_handler(const char* what, const char* message, void* context)
     if (context)
     {
         drogon::HttpResponse* resp = (drogon::HttpResponse*)context;
-        resp->setBody(get_error_page(what, message));
-        resp->setStatusCode(drogon::k500InternalServerError);
+        resp->setStatusCode(drogon::k400BadRequest);
+        yyjson_mut_doc* output_doc = yyjson_mut_doc_new(NULL);
+        yyjson_mut_val* output_root = yyjson_mut_obj(output_doc);
+        yyjson_mut_doc_set_root(output_doc, output_root);
+        yyjson_mut_obj_add_null(output_doc, output_root, "data");
+        yyjson_mut_obj_add_uint(output_doc, output_root, "count", 0);
+        yyjson_mut_val* error = yyjson_mut_obj_add_obj(output_doc, output_root, "error");
+        yyjson_mut_obj_add_str(output_doc, error, "message", message);
+        yyjson_mut_obj_add_str(output_doc, error, "location", what);
+        yyjson_mut_obj_add_int(output_doc, output_root, "modified", 0);
+        char* body = yyjson_mut_write(output_doc, YYJSON_WRITE_ESCAPE_UNICODE, NULL);
+        if (false)
+            resp->setBody(get_error_page(what, message));
+        else
+            resp->setBody(body);
+        yyjson_mut_doc_free(output_doc);
+        free(body);
     }
     else
     {
@@ -1691,11 +1737,11 @@ int main(int argc, char** argv) try
             impl.route, [handler, prepared_stat](const drogon::HttpRequestPtr& req, Callback&& callback)
             {
                 auto resp = drogon::HttpResponse::newHttpResponse();
+                    resp->setContentTypeCode(drogon::ContentType::CT_APPLICATION_JSON);
                 if (auto _r0 = handler(prepared_stat, ("/?" + req->getQuery()).c_str(), (void*)resp.get(),
                                        req->getBody().data(), req->getBody().size()))
                 {
                     resp->setBody(_r0);
-                    resp->setContentTypeCode(drogon::ContentType::CT_APPLICATION_JSON);
                     free((void*)_r0);
                 }
                 callback(resp);
@@ -1704,10 +1750,11 @@ int main(int argc, char** argv) try
     init_result.second.clear();
     document.reset();
     content.clear();
+    srv::init_listeners(apps, argc > 1 ? std::string(argv[1]) : std::string());
     apps.clear();
+
     drogon::app()
         // .setServerHeaderField("logi/drogon"+drogon::getVersion())
-        .addListener("0.0.0.0", 80)
         .run();
     return 0;
 }

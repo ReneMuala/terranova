@@ -1,14 +1,24 @@
 add_rules("mode.debug", "mode.release")
-add_requires("pugixml", "fmt", "drogon", "glog", "iguana", "sqlitecpp", "tinycc", "yyjson", "uriparser")
+add_requires("fmt", "drogon", "glog", "iguana", "sqlitecpp", "tinycc", "yyjson", "uriparser")
 target("logi")
     set_kind("binary")
     add_defines("KDL_STATIC_LIB", "KDLPP_STATIC_LIB")
     set_languages("c++23")
-    add_includedirs("deps/CppConsoleTable", "deps/supernova","deps/ckdl/include","deps/ckdl/bindings/cpp/include")
-    add_packages("pugixml", "fmt", "drogon", "glog", "iguana", "sqlitecpp", "tinycc", "yyjson", "uriparser")
+    add_includedirs("deps/ckdl/include","deps/ckdl/bindings/cpp/include")
+    add_packages( "fmt", "drogon", "glog", "iguana", "sqlitecpp", "tinycc", "yyjson", "uriparser")
     add_files("src/*.cpp","deps/ckdl/src/*.c",
-    -- "deps/ckdl/src/*/*.c",
     "deps/ckdl/bindings/cpp/src/*.cpp")
+    after_install(function(target)
+local pkg = target:pkgs()["tinycc"]
+            if pkg then
+                local tcc_libtccdll = path.join(pkg:installdir(), 'bin', 'libtcc.dll')
+                local local_libtccdll_dir = path.join(target:installdir(), 'bin', 'libtcc.dll')
+                os.cp(tcc_libtccdll,local_libtccdll_dir)
+            else
+                print("tinycc was not found")
+                os.exit(1)
+            end
+    end)
     after_load(function(target)
             local pkg = target:pkgs()["tinycc"]
             if pkg then
@@ -20,12 +30,15 @@ target("logi")
                  -- target:add("defines", 'TCC_LIB_PATH="' .. libpath:gsub("\\", "/") .. '"')
                  if not os.exists(local_lib_dir) then
                     os.cp(tcc_lib_dir,local_lib_dir)
-                 end
-                 local tcc_libtccdll = path.join(pkg:installdir(), 'bin', 'libtcc.dll')
-                 local local_libtccdll_dir = path.join(target:targetdir(), 'libtcc.dll')
+                 end ]]
+                local tcc_libtccdll = path.join(pkg:installdir(), 'bin', 'libtcc.dll')
+                local local_libtccdll_dir = path.join(target:targetdir(), 'libtcc.dll')
                 if not os.exists(local_libtccdll_dir) then
                     os.cp(tcc_libtccdll,local_libtccdll_dir)
-                end]]
+                end
+            else
+                print("tinycc was not found")
+                os.exit(1)
             end
         end)
 
