@@ -25,6 +25,8 @@ struct field
 {
     std::string name;
     std::string type;
+    bool optional = false;
+    bool unique = false;
     std::optional<file_options> file_options;
 };
 
@@ -34,7 +36,8 @@ struct has_many
     std::string alias;
     std::string as;
     std::string on_delete = "cascade";
-    std::string on = "id";
+    std::string on_update = "no action";
+    bool optional = false;
 };
 
 struct has_one
@@ -43,7 +46,8 @@ struct has_one
     std::string alias;
     std::string as;
     std::string on_delete = "cascade";
-    std::string on = "id";
+    std::string on_update = "no action";
+    bool optional = false;
 };
 
 struct belongs_to
@@ -52,6 +56,7 @@ struct belongs_to
     std::string alias;
     std::string as;
     std::string on = "id";
+    bool optional = false;
 };
 
 struct pk
@@ -639,9 +644,67 @@ namespace db
         throw std::runtime_error(fmt::format("field \"{}\" was not declared in \"{}\"", field_name, entity_name));
     }
 
-    inline std::string get_field_declaration(const std::string& name, const std::string& type, bool primary_key = false)
+    bool has_one_of_this(const std::string& other_entity_name, const std::string& this_entity_name,
+                         const std::unordered_map<std::string, std::optional<std::reference_wrapper<const ::entity>>>&
+                         em)
     {
-        const std::string extras = primary_key ? " PRIMARY KEY" : "";
+        const auto it = em.find(other_entity_name);
+        if (it == em.end() or not it->second)
+            throw std::runtime_error(fmt::format("entity \"{}\" was not declared", other_entity_name));
+        const auto entity = *it->second;
+        for (auto& field : entity.get().schema.has_one)
+        {
+            if (field.name == this_entity_name) return true;
+        }
+        return false;
+    }
+
+    std::string get_on_delete_str(const std::string& other_entity_name, const std::string& this_entity_name,
+                         const std::unordered_map<std::string, std::optional<std::reference_wrapper<const ::entity>>>&
+                         em)
+    {
+        const auto it = em.find(other_entity_name);
+        if (it == em.end() or not it->second)
+            throw std::runtime_error(fmt::format("entity \"{}\" was not declared", other_entity_name));
+        const auto entity = *it->second;
+        for (auto& field : entity.get().schema.has_one)
+        {
+            if (field.name == this_entity_name) return field.on_delete;
+        }
+        for (auto& field : entity.get().schema.has_many)
+        {
+            if (field.name == this_entity_name) return field.on_delete;
+        }
+        return "CASCADE";
+    }
+
+    std::string get_on_update_str(const std::string& other_entity_name, const std::string& this_entity_name,
+                        const std::unordered_map<std::string, std::optional<std::reference_wrapper<const ::entity>>>&
+                        em)
+    {
+        const auto it = em.find(other_entity_name);
+        if (it == em.end() or not it->second)
+            throw std::runtime_error(fmt::format("entity \"{}\" was not declared", other_entity_name));
+        const auto entity = *it->second;
+        for (auto& field : entity.get().schema.has_one)
+        {
+            if (field.name == this_entity_name) return field.on_update;
+        }
+        for (auto& field : entity.get().schema.has_many)
+        {
+            if (field.name == this_entity_name) return field.on_update;
+        }
+        return "NO ACTION";
+    }
+
+    inline std::string get_field_declaration(const std::string& name, const std::string& type, bool primary_key = false,
+                                             bool unique = false, bool required = true)
+    {
+        std::string extras = primary_key ? " PRIMARY KEY" : "";
+        if (not primary_key and unique)
+            extras.append(" UNIQUE");
+        if (required)
+            extras.append(" NOT NULL");
         return fmt::format("{} {}{},", throw_if_invalid_identifier(tolower(name)),
                            get_sql_type(throw_if_invalid_identifier(type)), extras);
     }
@@ -651,25 +714,29 @@ namespace db
     {
         std::string stmt = fmt::format("CREATE TABLE IF NOT EXISTS {} (",
                                        throw_if_invalid_identifier(tolower(entity.name)));
+        std::string fks;
         bool fields = false;
         if (entity.schema.pk)
             stmt.append(get_field_declaration(entity.schema.pk->name, entity.schema.pk->type, true));
         for (auto& field : entity.schema.fields)
         {
             if (not fields) fields = true;
-            stmt.append(get_field_declaration(field.name, field.type));
+            stmt.append(get_field_declaration(field.name, field.type, false, field.unique, not field.optional));
         }
         auto handle_relationship = [&](const auto& rel)
         {
             const std::string& it = throw_if_invalid_identifier(tolower(second_if_empty(rel.alias, rel.name)));
-            const std::string target = throw_if_invalid_identifier(tolower(rel.name));
-            const std::string target_id = throw_if_invalid_identifier(tolower(rel.on));
-            if (not fields) fields = true;
-            auto& target_id_field = get_field(target, target_id, em);
             if constexpr (std::is_same_v<decltype(rel), const belongs_to&>)
             {
-                stmt.append(get_field_declaration(fmt::format("{}_id", it), target_id_field.type));
-                stmt.append(fmt::format("FOREIGN KEY({0}_id) REFERENCES {1}({2}),", it, target, target_id));
+                if (not fields) fields = true;
+                const std::string target = throw_if_invalid_identifier(tolower(rel.name));
+                const std::string target_id = throw_if_invalid_identifier(tolower(rel.on));
+                auto& target_id_field = get_field(target, target_id, em);
+                const bool is_unique = has_one_of_this(target, entity.name, em);
+                const std::string on_delete_str = get_on_delete_str(target, entity.name, em);
+                const std::string on_update_str = get_on_update_str(target, entity.name, em);
+                stmt.append(get_field_declaration(fmt::format("{}_id", it), target_id_field.type, false, is_unique, not rel.optional));
+                fks.append(fmt::format("FOREIGN KEY({0}_id) REFERENCES {1}({2}) ON UPDATE {3} ON DELETE {4},", it, target, target_id, on_update_str, on_delete_str));
             }
         };
         for (auto& rel : entity.schema.has_one)
@@ -680,7 +747,13 @@ namespace db
             handle_relationship(rel);
         if (fields)
             stmt.pop_back();
-        stmt.append(");");
+        if (not fks.empty())
+        {
+            fks = "," + fks;
+            fks.pop_back();
+        }
+
+        stmt.append(fmt::format("{});", fks));
         LOG(INFO) << fmt::format("exec \"{}\"", stmt);
         database.exec(stmt);
     }
@@ -1257,7 +1330,8 @@ bool get_request_body(
             result.code.clear();
             impls.emplace_back(result);
         }
-        LOG(INFO) << code;
+        // LOG(INFO) << "// code: ";
+        // std::cerr << code << std::endl;
         // return std::move(svc1)
         return std::make_pair<std::vector<generated_implementation>, std::string>(std::move(impls), std::move(code));
     }
@@ -1515,20 +1589,22 @@ std::string get_error_page(const std::string& location, const std::string& descr
 
 namespace srv
 {
-    void init_listeners(const std::vector<application> & apps,const std::string & select_profile)
+    void init_listeners(const std::vector<application>& apps, const std::string& select_profile)
     {
         bool registered = false;
-        for (const auto & app : apps)
+        for (const auto& app : apps)
         {
-            for (const auto & profile : app.profile)
+            for (const auto& profile : app.profile)
             {
                 if (profile.name == select_profile or (select_profile.empty() and profile.default_))
                 {
-                    for (const auto & listen : profile.listen)
+                    for (const auto& listen : profile.listen)
                     {
                         if (not registered) registered = true;
-                        LOG(INFO) << fmt::format("profile:{} adding listener {}:{}", profile.name, listen.address, listen.port);
-                        drogon::app().addListener(listen.address, listen.port, not listen.cert.empty(), listen.cert, listen.key);
+                        LOG(INFO) << fmt::format("profile:{} adding listener {}:{}", profile.name, listen.address,
+                                                 listen.port);
+                        drogon::app().addListener(listen.address, listen.port, not listen.cert.empty(), listen.cert,
+                                                  listen.key);
                     }
                 }
             }
@@ -1677,6 +1753,10 @@ void log_address(unsigned long long message)
     LOG(INFO) << "Address: " << message;
 }
 
+namespace hks
+{
+}
+
 int main(int argc, char** argv) try
 {
     fmt::println(R"(╻  ┏━┓┏━╸╻
@@ -1686,9 +1766,10 @@ int main(int argc, char** argv) try
     FLAGS_logtostderr = true;
     FLAGS_stderrthreshold = 0;
     google::InitGoogleLogging(argv[0]);
-    auto file = std::ifstream("simple.kdl");
+    const std::string filename = argc > 1 ? std::string(argv[1]) : std::string("app.kdl");
+    auto file = std::ifstream(filename);
     if (!file.is_open())
-        LOG(FATAL) << "Could not open simple.xml";
+        LOG(FATAL) << fmt::format("Could not open {}", filename);
     std::u8string content(
         (std::istreambuf_iterator<char>(file)),
         std::istreambuf_iterator<char>()
@@ -1737,7 +1818,7 @@ int main(int argc, char** argv) try
             impl.route, [handler, prepared_stat](const drogon::HttpRequestPtr& req, Callback&& callback)
             {
                 auto resp = drogon::HttpResponse::newHttpResponse();
-                    resp->setContentTypeCode(drogon::ContentType::CT_APPLICATION_JSON);
+                resp->setContentTypeCode(drogon::ContentType::CT_APPLICATION_JSON);
                 if (auto _r0 = handler(prepared_stat, ("/?" + req->getQuery()).c_str(), (void*)resp.get(),
                                        req->getBody().data(), req->getBody().size()))
                 {
@@ -1750,9 +1831,9 @@ int main(int argc, char** argv) try
     init_result.second.clear();
     document.reset();
     content.clear();
-    srv::init_listeners(apps, argc > 1 ? std::string(argv[1]) : std::string());
+    srv::init_listeners(apps, argc > 2 ? std::string(argv[2]) : std::string());
     apps.clear();
-
+    // hks::test();
     drogon::app()
         // .setServerHeaderField("logi/drogon"+drogon::getVersion())
         .run();
