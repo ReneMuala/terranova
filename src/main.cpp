@@ -19,6 +19,7 @@ struct file_options
     std::string accept = "*";
     std::string folder = ".";
     int max_size = 1024 * 1024 * 10;
+    std::string _comments;
 };
 
 struct field
@@ -28,6 +29,7 @@ struct field
     bool optional = false;
     bool unique = false;
     std::optional<file_options> file_options;
+    std::string _comments;
 };
 
 struct has_many
@@ -38,6 +40,7 @@ struct has_many
     std::string on_delete = "cascade";
     std::string on_update = "no action";
     bool optional = false;
+    std::string _comments;
 };
 
 struct has_one
@@ -48,6 +51,7 @@ struct has_one
     std::string on_delete = "cascade";
     std::string on_update = "no action";
     bool optional = false;
+    std::string _comments;
 };
 
 struct belongs_to
@@ -57,12 +61,14 @@ struct belongs_to
     std::string as;
     std::string on = "id";
     bool optional = false;
+    std::string _comments;
 };
 
 struct pk
 {
     std::string name;
     std::string type;
+    std::string _comments;
 };
 
 struct schema
@@ -72,6 +78,7 @@ struct schema
     std::vector<has_one> has_one;
     std::vector<has_many> has_many;
     std::vector<belongs_to> belongs_to;
+    std::string _comments;
 };
 
 struct before
@@ -79,6 +86,7 @@ struct before
     std::string name;
     std::string script;
     std::string fn;
+    std::string _comments;
 };
 
 struct after
@@ -86,18 +94,21 @@ struct after
     std::string name;
     std::string script;
     std::string fn;
+    std::string _comments;
 };
 
 struct hooks
 {
     std::vector<before> before;
     std::vector<after> after;
+    std::string _comments;
 };
 
 struct param
 {
     std::string name;
     std::string type;
+    std::string _comments;
 };
 
 struct get
@@ -105,6 +116,7 @@ struct get
     std::string name;
     std::string sql;
     std::vector<param> params;
+    std::string _comments;
 };
 
 struct post
@@ -112,6 +124,7 @@ struct post
     std::string name;
     std::string sql;
     std::vector<param> params;
+    std::string _comments;
 };
 
 struct put
@@ -119,6 +132,7 @@ struct put
     std::string name;
     std::string sql;
     std::vector<param> params;
+    std::string _comments;
 };
 
 struct delete_
@@ -126,6 +140,7 @@ struct delete_
     std::string name;
     std::string sql;
     std::vector<param> params;
+    std::string _comments;
 };
 
 struct queries
@@ -134,6 +149,7 @@ struct queries
     std::vector<post> post;
     std::vector<put> put;
     std::vector<delete_> delete_;
+    std::string _comments;
 };
 
 struct entity
@@ -143,6 +159,7 @@ struct entity
     bool protected_ = false;
     hooks hooks;
     queries queries;
+    std::string _comments;
 };
 
 struct prepared_statement_metadata
@@ -153,15 +170,18 @@ struct prepared_statement_metadata
         request_body,
     };
 
+    std::string entity;
     std::string route;
     std::string method = "get";
     SQLite::Statement statement;
     std::vector<param> params;
     data_provider_t data_provider = url_params;
+    std::string _comments;
 };
 
 struct generated_implementation
 {
+    std::string entity;
     std::string name;
     std::string route;
     std::string method;
@@ -174,14 +194,17 @@ struct auth
     std::string provider;
     std::string identity;
     std::string secret;
+    std::string _comments;
 };
 
 struct listen
 {
     std::string address = "0.0.0.0";
+    std::string domain = "localhost";
     std::string cert;
     std::string key;
     int port = 80;
+    std::string _comments;
 };
 
 struct profile
@@ -189,15 +212,19 @@ struct profile
     std::string name;
     bool default_ = false;
     std::vector<listen> listen;
+    std::string _comments;
 };
 
 struct application
 {
     std::string name;
     std::string version = "1.0.0";
+    std::string email = "example@terranova.com";
+    std::string license = "MIT";
     auth auth;
     std::vector<entity> entity;
     std::vector<profile> profile;
+    std::string _comments;
 };
 
 template <typename T>
@@ -312,6 +339,11 @@ void load(kdl::Node& node, T& type)
 {
     using namespace ylt::reflection;
     const auto struct_name = get_struct_name<T>();
+    if (has_field<T>("_comments"))
+    {
+        auto& _comments = ylt::reflection::get<std::string>(type, "_comments");
+        _comments = node.comments();
+    }
     if (has_field<T>("name"))
     {
         auto& name = ylt::reflection::get<std::string>(type, "name");
@@ -590,6 +622,23 @@ namespace db
         }
     }
 
+    inline const std::string& get_json_type_from_c_type(const std::string& name)
+    {
+        static std::unordered_map<std::string, std::string> types{
+                    {"int", "number"},
+                    {"float", "number"},
+                    {"const char *", "string" },
+                    {"bool", "bool"},
+                };
+        const auto result = types.find(name);
+        if (result != types.end())
+        {
+            return result->second;
+        }
+        std::string error_msg = fmt::format("c type \"{}\" is not supported in json", name);
+        throw std::runtime_error(error_msg);
+    }
+
     inline const std::string& get_c_type(const std::string& name)
     {
         static std::unordered_map<std::string, std::string> types{
@@ -660,8 +709,9 @@ namespace db
     }
 
     std::string get_on_delete_str(const std::string& other_entity_name, const std::string& this_entity_name,
-                         const std::unordered_map<std::string, std::optional<std::reference_wrapper<const ::entity>>>&
-                         em)
+                                  const std::unordered_map<
+                                      std::string, std::optional<std::reference_wrapper<const ::entity>>>&
+                                  em)
     {
         const auto it = em.find(other_entity_name);
         if (it == em.end() or not it->second)
@@ -679,8 +729,9 @@ namespace db
     }
 
     std::string get_on_update_str(const std::string& other_entity_name, const std::string& this_entity_name,
-                        const std::unordered_map<std::string, std::optional<std::reference_wrapper<const ::entity>>>&
-                        em)
+                                  const std::unordered_map<
+                                      std::string, std::optional<std::reference_wrapper<const ::entity>>>&
+                                  em)
     {
         const auto it = em.find(other_entity_name);
         if (it == em.end() or not it->second)
@@ -735,8 +786,10 @@ namespace db
                 const bool is_unique = has_one_of_this(target, entity.name, em);
                 const std::string on_delete_str = get_on_delete_str(target, entity.name, em);
                 const std::string on_update_str = get_on_update_str(target, entity.name, em);
-                stmt.append(get_field_declaration(fmt::format("{}_id", it), target_id_field.type, false, is_unique, not rel.optional));
-                fks.append(fmt::format("FOREIGN KEY({0}_id) REFERENCES {1}({2}) ON UPDATE {3} ON DELETE {4},", it, target, target_id, on_update_str, on_delete_str));
+                stmt.append(get_field_declaration(fmt::format("{}_id", it), target_id_field.type, false, is_unique,
+                                                  not rel.optional));
+                fks.append(fmt::format("FOREIGN KEY({0}_id) REFERENCES {1}({2}) ON UPDATE {3} ON DELETE {4},", it,
+                                       target, target_id, on_update_str, on_delete_str));
             }
         };
         for (auto& rel : entity.schema.has_one)
@@ -767,6 +820,7 @@ namespace db
                                 throw_if_invalid_identifier(tolower(entity.name)));
         LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
         return prepared_statement_metadata{
+            .entity = entity.name,
             .route = to_route(entity.name),
             .method = "get",
             .statement = SQLite::Statement(database, stmt),
@@ -803,7 +857,7 @@ namespace db
             auto field_name = throw_if_invalid_identifier(tolower(field.name));
             values.append(with_comma_suffix(field_name));
             value_fields.append(with_comma_suffix_colon_prefix(field_name));
-            params.emplace_back(field_name, get_c_type(field.type));
+            params.emplace_back(field_name, get_c_type(field.type), field._comments);
         }
         auto handle_relationship = [&](const auto& rel)
         {
@@ -816,7 +870,9 @@ namespace db
                 value_fields.append(with_comma_suffix_colon_prefix(field_name));
                 auto& target_field = get_field(throw_if_invalid_identifier(tolower(rel.name)),
                                                throw_if_invalid_identifier(tolower(rel.on)), em);
-                params.emplace_back(field_name, get_c_type(target_field.type));
+                params.emplace_back(field_name, get_c_type(target_field.type),
+                                    fmt::format("foreign key for {} ({})", rel.name,
+                                                target_field.optional ? "optional" : "required"));
             }
         };
         for (auto& rel : entity.schema.has_one)
@@ -835,6 +891,7 @@ namespace db
         stmt = fmt::format("{} ({}) VALUES({});", stmt, values, value_fields);
         LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
         return {
+            .entity = entity.name,
             .route = to_route(entity.name),
             .method = "post",
             .statement = SQLite::Statement(database, stmt),
@@ -862,7 +919,7 @@ namespace db
             if (not fields) fields = true;
             auto field_name = throw_if_invalid_identifier(tolower(field.name));
             sets.append(form_set_statement(field_name));
-            params.emplace_back(field_name, get_c_type(field.type));
+            params.emplace_back(field_name, get_c_type(field.type), field._comments);
         }
         auto handle_relationship = [&](const auto& rel)
         {
@@ -874,7 +931,9 @@ namespace db
                 sets.append(form_set_statement(field_name));
                 auto& target_field = get_field(throw_if_invalid_identifier(tolower(rel.name)),
                                                throw_if_invalid_identifier(tolower(rel.on)), em);
-                params.emplace_back(field_name, get_c_type(target_field.type));
+                params.emplace_back(field_name, get_c_type(target_field.type),
+                                    fmt::format("foreign key for {} ({})", rel.name,
+                                                target_field.optional ? "optional" : "required"));
             }
         };
         for (auto& rel : entity.schema.has_one)
@@ -897,6 +956,7 @@ namespace db
                                        throw_if_invalid_identifier(tolower(entity.name)), sets, pk_name);
         LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
         return {
+            .entity = entity.name,
             .route = to_route(entity.name),
             .method = "put",
             .statement = SQLite::Statement(database, stmt),
@@ -916,12 +976,13 @@ namespace db
         if (entity.schema.pk)
         {
             pk_name = throw_if_invalid_identifier(tolower(entity.schema.pk->name));
-            params.emplace_back(pk_name, get_c_type(entity.schema.pk->type));
+            params.emplace_back(pk_name, get_c_type(entity.schema.pk->type), "required");
         }
         std::string stmt = fmt::format("DELETE FROM {0} WHERE {1} = :{1};",
                                        throw_if_invalid_identifier(tolower(entity.name)), pk_name);
         LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
         return prepared_statement_metadata{
+            .entity = entity.name,
             .route = to_route(entity.name),
             .method = "delete",
             .statement = SQLite::Statement(database, stmt),
@@ -973,9 +1034,10 @@ namespace db
         }
         for (const auto& param : params)
         {
-            stat_params.emplace_back(throw_if_invalid_identifier(param.name), get_c_type(param.type));
+            stat_params.emplace_back(throw_if_invalid_identifier(param.name), get_c_type(param.type), param._comments);
         }
         return prepared_statement_metadata{
+            .entity = entity.name,
             .route = to_route(entity.name) + to_route(name),
             .method = http_method,
             .statement = SQLite::Statement(database, stmt),
@@ -1221,6 +1283,7 @@ namespace svc
         else
             body_def = constructor + prepared_statement_usage + destructor + "return result;";
         return generated_implementation{
+            .entity = stat.entity,
             .name = fmt::format("handler_{0}", id),
             .route = stat.route,
             .method = stat.method,
@@ -1753,8 +1816,179 @@ void log_address(unsigned long long message)
     LOG(INFO) << "Address: " << message;
 }
 
-namespace hks
+namespace docs
 {
+#include <string>
+
+    std::string yaml_escape(const std::string& s) {
+        std::string out;
+        out.reserve(s.size());
+        for (unsigned char c : s) {
+            switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n";  break;
+            case '\r': out += "\\r";  break;
+            case '\t': out += "\\t";  break;
+            case '\b': out += "\\b";  break;
+            case '\f': out += "\\f";  break;
+            case '\0': out += "\\0";  break;
+            case '\a': out += "\\a";  break;
+            case '\v': out += "\\v";  break;
+            case 0x1B: out += "\\e";  break;
+            default:
+                if (c < 0x20 || c == 0x7F) {
+                    // other control characters as \xNN
+                    char buf[5];
+                    snprintf(buf, sizeof(buf), "\\x%02x", c);
+                    out += buf;
+                } else {
+                    out += c;
+                }
+                break;
+            }
+        }
+        return out;
+    }
+    std::string to_yaml_value(const std::string& s) {
+        return "\"" + yaml_escape(s) + "\"";
+    }
+
+
+#define IDENT   "  "
+#define IDENT2X "    "
+#define IDENT3X "      "
+#define IDENT4X "        "
+#define IDENT5X "          "
+#define IDENT6X "            "
+    inline std::string get_app_specs(const application& app)
+    {
+        return fmt::format(
+            "openapi: 3.0.3\n"
+            "info:\n"
+            IDENT"title: {0}\n"
+            IDENT"description: {1}\n"
+            IDENT"version: {2}\n"
+            IDENT"contact:\n"
+            IDENT2X"email: {3}\n"
+            IDENT"license:\n"
+            IDENT2X"name: {4}\n",
+            app.name, to_yaml_value(app._comments), app.version, app.email, app.license);
+    }
+
+    inline std::string get_servers(const application& app)
+    {
+        std::string servers = "servers:\n";
+        for (auto& profile : app.profile)
+        {
+            for (auto& listen : profile.listen)
+            {
+                std::string url;
+                if (listen.port == 80)
+                    url = fmt::format("http://{}", listen.domain);
+                else if (listen.port == 443)
+                    url = fmt::format("https://{}", listen.domain);
+                else if (listen.cert.length() and listen.key.length())
+                    url = fmt::format("https://{}:{}", listen.domain, listen.port);
+                else
+                    url = fmt::format("http://{}:{}", listen.domain, listen.port);
+                servers.append(fmt::format(
+                    IDENT"- url: {}\n"
+                    IDENT2X"description: {}\n"
+                    , url,
+                                           to_yaml_value(listen._comments)));
+            }
+        }
+        return servers;
+    }
+
+    inline std::string get_tags(const application& app)
+    {
+        std::string servers = "tags:\n";
+        for (auto& entity : app.entity)
+        {
+            servers.append(fmt::format(
+                IDENT"- name: {}\n"
+                IDENT2X"description: {}\n"
+                , entity.name, to_yaml_value(entity._comments.empty() ? entity._comments : "entity")));
+        }
+        return servers;
+    }
+
+    inline std::string get_param(const param& param, bool query)
+    {
+        return fmt::format(
+            IDENT4X"- name: {0}\n"
+            IDENT5X"in: {1}\n"
+            IDENT5X"schema: {{ type: {2} }}\n"
+            IDENT5X"description: {3}\n", param.name, "query", db::get_json_type_from_c_type(param.type), to_yaml_value(param._comments));
+    }
+
+    inline std::string get_params(const prepared_statement_metadata& stat)
+    {
+        std::string parameters = IDENT3X"parameters:\n";
+        for (auto& param : stat.params)
+            parameters.append(get_param(param, stat.data_provider == prepared_statement_metadata::url_params));
+        return parameters;
+    }
+
+    inline  std::string get_schema(unsigned long long index, const std::vector<param> & params)
+    {
+        std::string result = fmt::format(IDENT2X"bdy{}:\n"
+            IDENT3X"type: object\n"
+            IDENT3X"properties:\n"
+            , index);
+        for (auto& param : params)
+            result.append(fmt::format(IDENT4X"{0}: {{ type: {1}, description: {2} }}\n", param.name, db::get_json_type_from_c_type(param.type), to_yaml_value(param._comments)));
+        return result;
+    }
+
+    inline std::string get_request_body(const prepared_statement_metadata& stat, std::string & schemas)
+    {
+        static unsigned long long index = 0;
+        index++;
+        std::string parameters = IDENT3X"requestBody:\n"
+        IDENT4X"required: true\n"
+        IDENT4X"content:\n"
+        IDENT5X"application/json:\n";
+        parameters += fmt::format(IDENT6X"schema:  {{ $ref: '#/components/schemas/bdy{}' }}\n", index);
+        schemas.append(get_schema(index, stat.params));
+        return parameters;
+    }
+
+    inline std::string get_path(const prepared_statement_metadata& stat, std::string & schemas)
+    {
+        return fmt::format(
+            IDENT2X"{0}:\n" // method
+            IDENT3X"tags: [{1}]\n" // entity
+            IDENT3X"summary: {2}\n" // comments
+            "{3}" // params
+            , stat.method, stat.entity, to_yaml_value(stat._comments), stat.data_provider == prepared_statement_metadata::url_params ? get_params(stat) : get_request_body(stat, schemas));
+    }
+
+    inline std::string get_paths(const std::vector<prepared_statement_metadata>& stats, std::string& schemas)
+    {
+        std::string paths = "paths:\n";
+        std::unordered_map<std::string, std::string> umap;
+        for (auto& stat : stats)
+            umap[stat.route] += get_path(stat,schemas);
+        for (auto& pair : umap)
+            paths.append(fmt::format(IDENT"{}:\n{}", pair.first, pair.second));
+        return paths;
+    }
+
+    void init_docs(const std::vector<application>& apps, const std::vector<prepared_statement_metadata>& stats)
+    {
+        for (auto& app : apps)
+        {
+            std::string schemas = "components:\n"
+            IDENT"schemas:\n";
+            std::string spec = get_app_specs(app) + get_servers(app) + get_tags(app) + get_paths(stats, schemas)+schemas;
+            std::ofstream out(fmt::format("{}.yaml",  app.name));
+            out << spec;
+            break;
+        }
+    }
 }
 
 int main(int argc, char** argv) try
@@ -1781,6 +2015,7 @@ int main(int argc, char** argv) try
     std::vector<application> apps;
     load(document.value(), apps);
     std::vector<prepared_statement_metadata> prepared_statements = db::init_statements(apps);
+    docs::init_docs(apps, prepared_statements);
     auto init_result = svc::init_services(prepared_statements);
     svc::cjit service_layer("generated_service_layer_1.c");
     service_layer.push("log", log_message);

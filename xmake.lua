@@ -1,6 +1,6 @@
 add_rules("mode.debug", "mode.release")
 add_requires("fmt", "drogon", "glog", "iguana", "sqlitecpp", "tinycc", "yyjson", "uriparser")
-target("logi")
+target("terranova")
     set_kind("binary")
     add_defines("KDL_STATIC_LIB", "KDLPP_STATIC_LIB")
     set_languages("c++23")
