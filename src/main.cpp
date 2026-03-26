@@ -628,7 +628,7 @@ namespace db
                     {"int", "number"},
                     {"float", "number"},
                     {"const char *", "string" },
-                    {"bool", "bool"},
+                    {"bool", "boolean"},
                 };
         const auto result = types.find(name);
         if (result != types.end())
@@ -1016,6 +1016,7 @@ namespace db
                                                  std::string name, std::string stmt,
                                                  const std::vector<param>& params,
                                                  const std::string http_method,
+                                                 const std::string& comments,
                                                  const prepared_statement_metadata::data_provider_t data_provider_type =
                                                      prepared_statement_metadata::url_params)
     {
@@ -1042,6 +1043,7 @@ namespace db
             .method = http_method,
             .statement = SQLite::Statement(database, stmt),
             .params = stat_params,
+            ._comments = comments
         };
     }
 
@@ -1073,18 +1075,18 @@ namespace db
                                                 entity.name);
                 for (const auto& query : entity.queries.get)
                     prepared_stmts.
-                        emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, "get"));
+                        emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, "get", query._comments));
                 for (const auto& query : entity.queries.post)
                     prepared_stmts.emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params,
-                                                                 "post",
+                                                                 "post",query._comments,
                                                                  prepared_statement_metadata::request_body));
                 for (const auto& query : entity.queries.put)
                     prepared_stmts.emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params,
-                                                                 "put",
+                                                                 "put",query._comments,
                                                                  prepared_statement_metadata::request_body));
                 for (const auto& query : entity.queries.delete_)
                     prepared_stmts.
-                        emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, "delete"));
+                        emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, "delete",query._comments));
             }
         }
         return std::move(prepared_stmts);
