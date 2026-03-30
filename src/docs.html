@@ -365,7 +365,7 @@
         </div>
 
         <div class="upload-divider"><span>or paste spec</span></div>
-        <textarea class="paste-area" id="pasteArea" placeholder="openapi: 3.0.0&#10;info:&#10;  title: My API&#10;  version: 1.0.0&#10;paths: ..."></textarea>
+        <textarea class="paste-area" id="pasteArea" placeholder="# reload to get server spec&#10;openapi: 3.0.0&#10;info:&#10;  title: My API&#10;  version: 1.0.0&#10;paths: ..."></textarea>
 
         <div class="upload-divider"><span>or load from URL</span></div>
         <div class="url-row">
@@ -396,7 +396,7 @@
                 <div class="api-version" id="sideApiVersion">—</div>
             </div>
             <div class="sidebar-search">
-                <input class="search-input" type="text" placeholder="Search endpoints…" oninput="filterNav(this.value)"/>
+                <input class="search-input" type="search" name="endpoint" placeholder="Search endpoints…" oninput="filterNav(this.value)"/>
             </div>
             <nav class="sidebar-nav" id="sideNav"></nav>
         </aside>
@@ -423,6 +423,14 @@
     // ─── STATE ───
     let currentSpec = null;
     let rawSpecText = '';
+
+    window.addEventListener("load", async () => {
+        const field = document.getElementById("pasteArea")
+        if(field.value.length == 0){
+            const result = await fetch("./docs.yaml");
+            document.getElementById("pasteArea").value = await result.text();
+        }
+    });
 
     // ─── UPLOAD HANDLERS ───
     function showError(msg) {
@@ -773,7 +781,7 @@ security:
         d.className = 'auth-block';
         d.innerHTML = '<div class="field-section-title" style="margin-bottom:.65rem">Authorization</div>'
             + '<div class="auth-row"><span class="auth-scheme">' + esc(label) + '</span>'
-            + '<input class="auth-input" type="password" placeholder="Enter your API token…"/>'
+            + '<input class="auth-input" type="text" name="authorization" placeholder="Enter your API token…"/>'
             + '<button class="auth-btn">Authorize</button></div>';
         return d;
     }
@@ -878,38 +886,9 @@ security:
     }
 
     function buildCurlExample(method, path, op, spec) {
-        console.log("method", method,)
-        console.log("path",  path, )
-        console.log("op",  op, )
         const servers = spec.servers || (spec.host ? [{ url: (spec.schemes?.[0] || 'https') + '://' + spec.host + (spec.basePath || '') }] : [{ url: 'https://api.example.com' }]);
         const base = servers[0]?.url || 'https://api.example.com';
         const hasBody = ['post','put','patch'].includes(method) && op.requestBody;
-/*
-* {
-    "tags": [
-        "Relatorio"
-    ],
-    "summary": "",
-    "parameters": [
-        {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-                "type": "number"
-            },
-            "description": ""
-        },
-        {
-            "name": "offset",
-            "in": "query",
-            "schema": {
-                "type": "number"
-            },
-            "description": ""
-        }
-    ]
-}
-* */
         const displayPath = esc(path).replace(/\{([^}]+)\}/g, '<span style="color:#f8c555">{$1}</span>');
         let curl = '<span style="color:#79b8ff">curl</span>';
         if (method !== 'get') curl += ' -X ' + method.toUpperCase();
@@ -918,7 +897,6 @@ security:
             let first = true;
             for(const param of op.parameters){
                 if(param.in != "query") continue;
-                console.log(param.schema.type);
                 if(first) {
                     curl += '?';
                     first = false;
