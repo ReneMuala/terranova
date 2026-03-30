@@ -1596,9 +1596,9 @@ void init_docs(const std::vector<application>& apps, const std::vector<prepared_
 
 int main(int argc, char** argv) try
 {
-    fmt::println(R"(╻  ┏━┓┏━╸╻
-┃  ┃ ┃┃╺┓┃
-┗━╸┗━┛┗━┛╹)");
+    fmt::println(R"(┌┬┐┌─┐┬─┐┬─┐┌─┐┌┐┌┌─┐┬  ┬┌─┐
+ │ ├┤ ├┬┘├┬┘├─┤││││ │└┐┌┘├─┤
+ ┴ └─┘┴└─┴└─┴ ┴┘└┘└─┘ └┘ ┴ ┴)");
     FLAGS_minloglevel = 0;
     FLAGS_logtostderr = true;
     FLAGS_stderrthreshold = 0;
