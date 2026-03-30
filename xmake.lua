@@ -1,46 +1,83 @@
 add_rules("mode.debug", "mode.release")
-add_requires("fmt", "drogon", "glog", "iguana", "sqlitecpp", "tinycc", "yyjson", "uriparser")
+add_requires("fmt", "drogon", "glog", "iguana", "sqlitecpp", "yyjson", "uriparser")
+
+if is_plat("windows") then
+    add_requires("tinycc")
+end
 target("terranova")
-    set_kind("binary")
-    add_defines("KDL_STATIC_LIB", "KDLPP_STATIC_LIB")
-    set_languages("c++23")
-    add_includedirs("deps/ckdl/include","deps/ckdl/bindings/cpp/include")
-    add_packages( "fmt", "drogon", "glog", "iguana", "sqlitecpp", "tinycc", "yyjson", "uriparser")
-    add_files("src/*.cpp","deps/ckdl/src/*.c",
+set_kind("binary")
+add_defines("KDL_STATIC_LIB", "KDLPP_STATIC_LIB")
+set_languages("c++23")
+add_includedirs("deps/ckdl/include", "deps/ckdl/bindings/cpp/include")
+add_packages("fmt", "drogon", "glog", "iguana", "sqlitecpp", "yyjson", "uriparser")
+if is_plat("windows") then
+    add_cdefs("TERRANOVA_WINDOWS")
+    add_packages("tinycc")
+end
+add_files("src/*.cpp", "deps/ckdl/src/*.c",
     "deps/ckdl/bindings/cpp/src/*.cpp")
-    after_install(function(target)
-local pkg = target:pkgs()["tinycc"]
-            if pkg then
-                local tcc_libtccdll = path.join(pkg:installdir(), 'bin', 'libtcc.dll')
-                local local_libtccdll_dir = path.join(target:installdir(), 'bin', 'libtcc.dll')
-                os.cp(tcc_libtccdll,local_libtccdll_dir)
-            else
-                print("tinycc was not found")
-                os.exit(1)
-            end
-    end)
-    after_load(function(target)
-            local pkg = target:pkgs()["tinycc"]
-            if pkg then
-                target:add("includedirs", path.join(pkg:installdir(), "bin"))
-                target:add("linkdirs", path.join(pkg:installdir(), "bin"))
-                target:add("links", "libtcc")
-                 --[[local tcc_lib_dir = path.join(pkg:installdir(), 'lib')
+after_install(function(target)
+    if is_plat("windows") then
+        local pkg = target:pkgs()["tinycc"]
+        if pkg then
+            local tcc_libtccdll = path.join(pkg:installdir(), 'bin', 'libtcc.dll')
+            local local_libtccdll_dir = path.join(target:installdir(), 'bin', 'libtcc.dll')
+            os.cp(tcc_libtccdll, local_libtccdll_dir)
+        else
+            print("tinycc was not found")
+            os.exit(1)
+        end
+    end
+end)
+after_load(function(target)
+    if is_plat("windows") then
+        local pkg = target:pkgs()["tinycc"]
+        if pkg then
+            target:add("includedirs", path.join(pkg:installdir(), "bin"))
+            target:add("linkdirs", path.join(pkg:installdir(), "bin"))
+            target:add("links", "libtcc")
+            --[[local tcc_lib_dir = path.join(pkg:installdir(), 'lib')
                  local local_lib_dir = path.join(target:targetdir(), 'lib')
                  -- target:add("defines", 'TCC_LIB_PATH="' .. libpath:gsub("\\", "/") .. '"')
                  if not os.exists(local_lib_dir) then
                     os.cp(tcc_lib_dir,local_lib_dir)
                  end ]]
-                local tcc_libtccdll = path.join(pkg:installdir(), 'bin', 'libtcc.dll')
-                local local_libtccdll_dir = path.join(target:targetdir(), 'libtcc.dll')
-                if not os.exists(local_libtccdll_dir) then
-                    os.cp(tcc_libtccdll,local_libtccdll_dir)
-                end
-            else
-                print("tinycc was not found")
-                os.exit(1)
+            local tcc_libtccdll = path.join(pkg:installdir(), 'bin', 'libtcc.dll')
+            local local_libtccdll_dir = path.join(target:targetdir(), 'libtcc.dll')
+            if not os.exists(local_libtccdll_dir) then
+                os.cp(tcc_libtccdll, local_libtccdll_dir)
             end
-        end)
+        else
+            print("tinycc was not found")
+            os.exit(1)
+        end
+    else
+        local version = "0.9.27"
+        local downloaded_file = "deps/tcc/tcc-" .. version .. ".tar.bz2"
+        if not os.exists(downloaded_file) then
+            import("net.http")
+            print("[tcc not found, downloading]")
+            local download_url = "https://download-mirror.savannah.gnu.org/releases/tinycc/tcc-" .. version .. ".tar.bz2"
+            http.download(download_url, downloaded_file)
+        end
+        local extracted_dir_root = "deps/tcc/"
+        local extracted_dir = path.join(extracted_dir_root, "tcc-" .. version)
+        if not os.exists(extracted_dir) then
+            print("[tcc not extracted, extracting]")
+            import("utils.archive")
+            archive.extract(downloaded_file, extracted_dir_root)
+        end
+
+        if not os.exists(path.join(extracted_dir, "config.h")) then
+            print("[tcc not configured, configuring]")
+            local old = os.cd(extracted_dir)
+            os.exec("./configure")
+            os.cd(old)
+        end
+        target:add("includedirs", extracted_dir)
+        target:add("files", path.join(extracted_dir, "libtcc.c"))
+    end
+end)
 
 --
 -- If you want to known more usage about xmake, please see https://xmake.io
@@ -110,4 +147,3 @@ local pkg = target:pkgs()["tinycc"]
 --
 -- @endcode
 --
-

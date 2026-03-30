@@ -7,7 +7,11 @@
 #include <glog/logging.h>
 #include "iguana/ylt/reflection/member_value.hpp"
 #include <SQLiteCpp/SQLiteCpp.h>
-#include <libtcc/libtcc.h>
+#ifdef TERRANOVA_WINDOWS
+    #include <libtcc/libtcc.h>
+#else
+    #include <libtcc.h>
+#endif
 #include <yyjson.h>
 #include <drogon/drogon_callbacks.h>
 
@@ -28,7 +32,7 @@ struct field
     std::string type;
     bool optional = false;
     bool unique = false;
-    std::optional<file_options> file_options;
+    std::optional<struct file_options> file_options;
     std::string _comments;
 };
 
@@ -73,11 +77,11 @@ struct pk
 
 struct schema
 {
-    std::optional<pk> pk;
-    std::vector<field> fields;
-    std::vector<has_one> has_one;
-    std::vector<has_many> has_many;
-    std::vector<belongs_to> belongs_to;
+    std::optional<struct pk> pk;
+    std::vector<struct field> fields;
+    std::vector<struct has_one> has_one;
+    std::vector<struct has_many> has_many;
+    std::vector<struct belongs_to> belongs_to;
     std::string _comments;
 };
 
@@ -99,8 +103,8 @@ struct after
 
 struct hooks
 {
-    std::vector<before> before;
-    std::vector<after> after;
+    std::vector<struct before> before;
+    std::vector<struct after> after;
     std::string _comments;
 };
 
@@ -115,7 +119,7 @@ struct get
 {
     std::string name;
     std::string sql;
-    std::vector<param> params;
+    std::vector<struct param> params;
     std::string _comments;
 };
 
@@ -123,7 +127,7 @@ struct post
 {
     std::string name;
     std::string sql;
-    std::vector<param> params;
+    std::vector<struct param> params;
     std::string _comments;
 };
 
@@ -131,7 +135,7 @@ struct put
 {
     std::string name;
     std::string sql;
-    std::vector<param> params;
+    std::vector<struct param> params;
     std::string _comments;
 };
 
@@ -139,26 +143,26 @@ struct delete_
 {
     std::string name;
     std::string sql;
-    std::vector<param> params;
+    std::vector<struct param> params;
     std::string _comments;
 };
 
 struct queries
 {
-    std::vector<get> get;
-    std::vector<post> post;
-    std::vector<put> put;
-    std::vector<delete_> delete_;
+    std::vector<struct get> get;
+    std::vector<struct post> post;
+    std::vector<struct put> put;
+    std::vector<struct delete_> delete_;
     std::string _comments;
 };
 
 struct entity
 {
     std::string name;
-    schema schema;
+    struct schema schema;
     bool protected_ = false;
-    hooks hooks;
-    queries queries;
+    struct hooks hooks;
+    struct queries queries;
     std::string _comments;
 };
 
@@ -174,7 +178,7 @@ struct prepared_statement_metadata
     std::string route;
     std::string method = "get";
     SQLite::Statement statement;
-    std::vector<param> params;
+    std::vector<struct param> params;
     data_provider_t data_provider = url_params;
     std::string _comments;
 };
@@ -211,7 +215,7 @@ struct profile
 {
     std::string name;
     bool default_ = false;
-    std::vector<listen> listen;
+    std::vector<struct listen> listen;
     std::string _comments;
 };
 
@@ -221,9 +225,9 @@ struct application
     std::string version = "1.0.0";
     std::string email = "example@terranova.com";
     std::string license = "MIT";
-    auth auth;
-    std::vector<entity> entity;
-    std::vector<profile> profile;
+    struct auth auth;
+    std::vector<struct entity> entity;
+    std::vector<struct profile> profile;
     std::string _comments;
 };
 
@@ -849,7 +853,7 @@ namespace db
     {
         std::string stmt = fmt::format("INSERT INTO {} ", throw_if_invalid_identifier(tolower(entity.name)));
         std::string values, value_fields;
-        std::vector<param> params;
+        std::vector<struct param> params;
         bool fields = false;
         for (auto& field : entity.schema.fields)
         {
@@ -911,7 +915,7 @@ namespace db
                                                  &
                                                  em)
     {
-        std::vector<param> params;
+        std::vector<struct param> params;
         std::string sets;
         bool fields = false;
         for (auto& field : entity.schema.fields)
@@ -972,7 +976,7 @@ namespace db
                                                  em)
     {
         std::string pk_name;
-        std::vector<param> params;
+        std::vector<struct param> params;
         if (entity.schema.pk)
         {
             pk_name = throw_if_invalid_identifier(tolower(entity.schema.pk->name));
@@ -1477,7 +1481,7 @@ void collect_bool(const char* name, void* output_buffer, void* input_buffer)
 void collect_const_char(const char* name, void** output_buffer, void* input_buffer)
 {
     if (name && output_buffer && input_buffer)
-        *(char**)output_buffer = _strdup(yyjson_get_str(yyjson_obj_get(static_cast<yyjson_val*>(input_buffer), name)));
+        *(char**)output_buffer = strdup(yyjson_get_str(yyjson_obj_get(static_cast<yyjson_val*>(input_buffer), name)));
 }
 
 typedef bool (*output_handler_t)(void* obj, void* ou, void* in);
@@ -2020,34 +2024,34 @@ int main(int argc, char** argv) try
     docs::init_docs(apps, prepared_statements);
     auto init_result = svc::init_services(prepared_statements);
     svc::cjit service_layer("generated_service_layer_1.c");
-    service_layer.push("log", log_message);
-    service_layer.push("log_address", log_address);
-    service_layer.push("duplicate_string", _strdup);
-    service_layer.push("free", free);
-    service_layer.push("collect_const_char", collect_const_char);
-    service_layer.push("collect_bool", collect_bool);
-    service_layer.push("collect_float", collect_float);
-    service_layer.push("collect_int", collect_int);
-    service_layer.push("prepared_statement_get_results_json", prepared_statement_get_results_json);
-    service_layer.push("prepared_statement_reset", prepared_statement_reset);
-    service_layer.push("bind_statement_const_char", bind_statement_const_char);
-    service_layer.push("bind_statement_int", bind_statement_int);
-    service_layer.push("bind_statement_float", bind_statement_float);
-    service_layer.push("bind_statement_bool", bind_statement_bool);
-    service_layer.push("raise_unexpected_url_param_error", raise_unexpected_url_param_error);
-    service_layer.push("atoi", atoi);
-    service_layer.push("atof", atof);
-    service_layer.push("atob", atob);
-    service_layer.push("strncmp", strncmp);
-    service_layer.push("error_handler", error_handler);
-    service_layer.push("get_uri_params", get_uri_params);
-    service_layer.push("get_request_body", get_request_body);
+    service_layer.push("log", (void*)log_message);
+    service_layer.push("log_address", (void*)log_address);
+    service_layer.push("duplicate_string", (void*)strdup);
+    service_layer.push("free", (void*)free);
+    service_layer.push("collect_const_char", (void*)collect_const_char);
+    service_layer.push("collect_bool", (void*)collect_bool);
+    service_layer.push("collect_float", (void*)collect_float);
+    service_layer.push("collect_int", (void*)collect_int);
+    service_layer.push("prepared_statement_get_results_json", (void*)prepared_statement_get_results_json);
+    service_layer.push("prepared_statement_reset", (void*)prepared_statement_reset);
+    service_layer.push("bind_statement_const_char", (void*)bind_statement_const_char);
+    service_layer.push("bind_statement_int", (void*)bind_statement_int);
+    service_layer.push("bind_statement_float", (void*)bind_statement_float);
+    service_layer.push("bind_statement_bool", (void*)bind_statement_bool);
+    service_layer.push("raise_unexpected_url_param_error", (void*)raise_unexpected_url_param_error);
+    service_layer.push("atoi", (void*)atoi);
+    service_layer.push("atof", (void*)atof);
+    service_layer.push("atob", (void*)atob);
+    service_layer.push("strncmp", (void*)strncmp);
+    service_layer.push("error_handler", (void*)error_handler);
+    service_layer.push("get_uri_params", (void*)get_uri_params);
+    service_layer.push("get_request_body", (void*)get_request_body);
     service_layer.compile(init_result.second);
     LOG(INFO) << fmt::format("generated & compiled {} services successfully", init_result.first.size());
     for (auto& impl : init_result.first)
     {
         LOG(INFO) << fmt::format("{} {} -> {}(...)", impl.method, impl.route, impl.name);
-        service_layer.push("get_request_body", get_request_body);
+        service_layer.push("get_request_body", (void*)get_request_body);
         handler_t handler = (handler_t)service_layer.peek(impl.name);
         void* prepared_stat = impl.prepared_statement;
 
