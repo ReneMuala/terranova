@@ -10,6 +10,9 @@ add_packages("fmt", "drogon", "glog", "iguana", "sqlitecpp", "yyjson", "uriparse
 add_files("src/*.cpp", "deps/ckdl/src/*.c",
     "deps/ckdl/bindings/cpp/src/*.cpp")
 add_files("src/docs.html",{rule = "utils.bin2c"})
+if is_plat("windows") then
+add_cxxflags("/bigobj")
+end
 after_load(function(target)
     local version = "0.9.27"
     local downloaded_file = "deps/tcc/tcc-" .. version .. ".tar.bz2"

@@ -146,6 +146,36 @@ struct queries
     std::string _comments;
 };
 
+struct for_
+{
+    std::string name;
+    std::string route;
+    std::string query;
+    std::string _comments;
+};
+
+struct template_set
+{
+    std::vector<for_> for_;
+    std::string _comments;
+};
+
+struct template_
+{
+    std::string name;
+    std::string query;
+    std::string file;
+    std::string html;
+    std::string _comments;
+};
+
+struct views
+{
+    std::vector<template_> template_;
+    std::vector<template_set> template_set;
+    std::string _comments;
+};
+
 struct entity
 {
     std::string name;
@@ -153,6 +183,7 @@ struct entity
     bool protected_ = false;
     struct hooks hooks;
     struct queries queries;
+    struct views views;
     std::string _comments;
 };
 
