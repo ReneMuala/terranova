@@ -218,6 +218,7 @@ struct application
     struct auth auth;
     std::vector<struct entity> entity;
     std::vector<struct profile> profile;
+    std::string namespace_ = "/";
     std::string _comments;
     bool serve_docs = true;
 };

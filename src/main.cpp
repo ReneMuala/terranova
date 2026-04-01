@@ -40,9 +40,32 @@ inline std::string tolower(std::string str)
     return str;
 }
 
-inline std::string to_route(const std::string& name)
+namespace routes {
+    static std::string current_namespace;
+
+    class namespace_lock
+    {
+        public:
+        namespace_lock(const std::string & ns)
+        {
+            static std::regex valid_namespace(R"((/\w+)*/)");
+            if (not std::regex_match(ns, valid_namespace))
+            {
+                throw std::runtime_error(fmt::format("invalid namespace \"{}\", namespaces must have the format /a/b/c.../d/ or just /", ns));
+            }
+            current_namespace = ns;
+        }
+
+        ~namespace_lock()
+        {
+            current_namespace = "/";
+        }
+    };
+}
+
+inline std::string to_route(const std::string& name,const bool with_prefix = true)
 {
-    return "/" + std::regex_replace(tolower(name), std::regex("\\s"), "-");
+    return (with_prefix ? routes::current_namespace : std::string("/")) + std::regex_replace(tolower(name), std::regex("\\s"), "-");
 }
 
 inline std::string snake_to_kebab(const std::string& kebab)
@@ -809,7 +832,7 @@ namespace db
         }
         return prepared_statement_metadata{
             .entity = entity.name,
-            .route = to_route(entity.name) + to_route(name),
+            .route = to_route(entity.name) + to_route(name, false),
             .method = http_method,
             .statement = SQLite::Statement(database, stmt),
             .params = stat_params,
@@ -822,6 +845,7 @@ namespace db
         std::vector<prepared_statement_metadata> prepared_stmts;
         for (auto& app : apps)
         {
+            routes::namespace_lock lock(app.namespace_);
             SQLite::Database database(fmt::format("{}.sqlite", throw_if_invalid_identifier(app.name)),
                                       SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
             std::unordered_map<std::string, std::optional<std::reference_wrapper<const entity>>> entity_ref_map;
