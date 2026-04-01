@@ -47,12 +47,17 @@ namespace docs
     }
 
 
-#define IDENT   "  "
-#define IDENT2X "    "
-#define IDENT3X "      "
-#define IDENT4X "        "
-#define IDENT5X "          "
-#define IDENT6X "            "
+#define IDENT       "  "
+#define IDENT2X     "    "
+#define IDENT3X     "      "
+#define IDENT4X     "        "
+#define IDENT5X     "          "
+#define IDENT6X     "            "
+#define IDENT7X     "              "
+#define IDENT8X     "                "
+#define IDENT9X     "                  "
+#define IDENT10X    "                    "
+#define IDENT11X    "                      "
     inline std::string get_app_specs(const application& app)
     {
         return fmt::format(
@@ -170,7 +175,33 @@ namespace docs
         IDENT4X"'200':\n"
         IDENT5X"description: OK\n"
         IDENT5X"content:\n"
-        IDENT6X"application/json:\n";
+        IDENT6X"application/json:\n"
+        IDENT7X"schema:\n"
+        IDENT8X"type: object\n"
+        IDENT8X"properties:\n"
+        IDENT9X"data:\n"
+        IDENT10X"type: array\n"
+        IDENT9X"count:\n"
+        IDENT10X"type: number\n"
+        IDENT9X"error:\n"
+        IDENT10X"type: null\n"
+        IDENT9X"modified:\n"
+        IDENT10X"type: number\n"
+        IDENT4X"'400':\n"
+        IDENT5X"description: Error\n"
+        IDENT5X"content:\n"
+        IDENT6X"application/json:\n"
+        IDENT7X"schema:\n"
+        IDENT8X"type: object\n"
+        IDENT8X"properties:\n"
+        IDENT9X"data:\n"
+        IDENT10X"type: null\n"
+        IDENT9X"count:\n"
+        IDENT10X"type: number\n"
+        IDENT9X"error:\n"
+        IDENT10X"type: string\n"
+        IDENT9X"modified:\n"
+        IDENT10X"type: number\n";
     }
 
     inline std::string get_path(const prepared_statement_metadata& stat, std::string & schemas)
@@ -180,7 +211,8 @@ namespace docs
             IDENT3X"tags: [{1}]\n" // entity
             IDENT3X"summary: {2}\n" // comments
             "{3}" // params
-            , stat.method, stat.entity, to_yaml_value(stat._comments), stat.data_provider == prepared_statement_metadata::url_params ? get_params(stat) : get_request_body(stat, schemas));
+            "{4}" // responses
+            , stat.method, stat.entity, to_yaml_value(stat._comments), stat.data_provider == prepared_statement_metadata::url_params ? get_params(stat) : get_request_body(stat, schemas), get_responses());
     }
 
     inline std::string get_paths(const std::vector<prepared_statement_metadata>& stats, std::string& schemas)
