@@ -55,7 +55,6 @@ namespace routes {
             }
             current_namespace = ns;
         }
-
         ~namespace_lock()
         {
             current_namespace = "/";
@@ -374,6 +373,34 @@ void load(kdl::Node& node, T& type)
                 if (child_name == "listen")
                 {
                     load<listen>(child, it.emplace_back());
+                    success = true;
+                }
+            } else if constexpr (std::is_same_v<decltype(it), views&>)
+            {
+                if (child_name == "views")
+                {
+                    load<views>(child, it);
+                    success = true;
+                }
+            } else if constexpr (std::is_same_v<decltype(it), std::vector<template_>&>)
+            {
+                if (child_name == "template")
+                {
+                    load<template_>(child, it.emplace_back());
+                    success = true;
+                }
+            } else if constexpr (std::is_same_v<decltype(it), std::vector<for_>&>)
+            {
+                if (child_name == "for")
+                {
+                    load<for_>(child, it.emplace_back());
+                    success = true;
+                }
+            } else if constexpr (std::is_same_v<decltype(it), std::vector<template_set>&>)
+            {
+                if (child_name == "template-set")
+                {
+                    load<template_set>(child, it.emplace_back());
                     success = true;
                 }
             }
