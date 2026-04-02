@@ -1,4 +1,5 @@
 #include <any>
+#include <exception>
 #include <fstream>
 #include <iostream>
 #include <regex>
@@ -7,6 +8,7 @@
 #include <glog/logging.h>
 #include "iguana/ylt/reflection/member_value.hpp"
 #include <libtcc.h>
+#include <stdexcept>
 #include <yyjson.h>
 #include <drogon/drogon_callbacks.h>
 #include "uriparser/Uri.h"
@@ -854,7 +856,7 @@ namespace db
         }
     }
 
-    prepared_statement_metadata init_stmt_custom(const SQLite::Database& database, const entity& entity,
+    prepared_statement_metadata init_stmt_custom_raw(const SQLite::Database& database, const entity& entity,
                                                  std::string name, std::string stmt,
                                                  const std::vector<param>& params,
                                                  const std::string http_method,
@@ -887,6 +889,21 @@ namespace db
             .params = stat_params,
             ._comments = comments
         };
+    }
+
+    inline prepared_statement_metadata init_stmt_custom(const SQLite::Database& database, const entity& entity,
+                                                 std::string name, std::string stmt,
+                                                 const std::vector<param>& params,
+                                                 const std::string http_method,
+                                                 const std::string& comments,
+                                                 const prepared_statement_metadata::data_provider_t data_provider_type =
+                                                     prepared_statement_metadata::url_params)
+    {
+        if(not stmt.empty()) {
+            return init_stmt_custom_raw(database, entity, name, stmt, params, http_method, comments);
+        } else {
+            throw std::runtime_error("composed statements are a work in progress");
+        }
     }
 
     void sql_custom_cap(sqlite3_context* ctx, int argc, sqlite3_value** argv)

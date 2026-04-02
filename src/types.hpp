@@ -176,7 +176,7 @@ struct for_
 
 struct template_set
 {
-    std::vector<for_> for_;
+    std::vector<struct for_> for_;
     std::string _comments;
 };
 
@@ -191,8 +191,8 @@ struct template_
 
 struct views
 {
-    std::vector<template_> template_;
-    std::vector<template_set> template_set;
+    std::vector<struct template_> template_;
+    std::vector<struct template_set> template_set;
     std::string _comments;
 };
 
