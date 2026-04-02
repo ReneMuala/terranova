@@ -9,9 +9,9 @@
 #include <libtcc.h>
 #include <yyjson.h>
 #include <drogon/drogon_callbacks.h>
-
 #include "uriparser/Uri.h"
 #include "types.hpp"
+#include <sqlite3.h>
 std::unordered_map<std::string, std::any> handlers;
 
 template <typename T>
@@ -40,21 +40,24 @@ inline std::string tolower(std::string str)
     return str;
 }
 
-namespace routes {
+namespace routes
+{
     static std::string current_namespace;
 
     class namespace_lock
     {
-        public:
-        namespace_lock(const std::string & ns)
+    public:
+        namespace_lock(const std::string& ns)
         {
             static std::regex valid_namespace(R"((/\w+)*/)");
             if (not std::regex_match(ns, valid_namespace))
             {
-                throw std::runtime_error(fmt::format("invalid namespace \"{}\", namespaces must have the format /a/b/c.../d/ or just /", ns));
+                throw std::runtime_error(fmt::format(
+                    "invalid namespace \"{}\", namespaces must have the format /a/b/c.../d/ or just /", ns));
             }
             current_namespace = ns;
         }
+
         ~namespace_lock()
         {
             current_namespace = "/";
@@ -62,9 +65,10 @@ namespace routes {
     };
 }
 
-inline std::string to_route(const std::string& name,const bool with_prefix = true)
+inline std::string to_route(const std::string& name, const bool with_prefix = true)
 {
-    return (with_prefix ? routes::current_namespace : std::string("/")) + std::regex_replace(tolower(name), std::regex("\\s"), "-");
+    return (with_prefix ? routes::current_namespace : std::string("/")) + std::regex_replace(
+        tolower(name), std::regex("\\s"), "-");
 }
 
 inline std::string snake_to_kebab(const std::string& kebab)
@@ -375,32 +379,50 @@ void load(kdl::Node& node, T& type)
                     load<listen>(child, it.emplace_back());
                     success = true;
                 }
-            } else if constexpr (std::is_same_v<decltype(it), views&>)
+            }
+            else if constexpr (std::is_same_v<decltype(it), views&>)
             {
                 if (child_name == "views")
                 {
                     load<views>(child, it);
                     success = true;
                 }
-            } else if constexpr (std::is_same_v<decltype(it), std::vector<template_>&>)
+            }
+            else if constexpr (std::is_same_v<decltype(it), std::vector<template_>&>)
             {
                 if (child_name == "template")
                 {
                     load<template_>(child, it.emplace_back());
                     success = true;
                 }
-            } else if constexpr (std::is_same_v<decltype(it), std::vector<for_>&>)
+            }
+            else if constexpr (std::is_same_v<decltype(it), std::vector<for_>&>)
             {
                 if (child_name == "for")
                 {
                     load<for_>(child, it.emplace_back());
                     success = true;
                 }
-            } else if constexpr (std::is_same_v<decltype(it), std::vector<template_set>&>)
+            }
+            else if constexpr (std::is_same_v<decltype(it), std::vector<template_set>&>)
             {
                 if (child_name == "template-set")
                 {
                     load<template_set>(child, it.emplace_back());
+                    success = true;
+                }
+            } else if constexpr (std::is_same_v<decltype(it), std::vector<data>&>)
+            {
+                if (child_name == "data")
+                {
+                    load<data>(child, it.emplace_back());
+                    success = true;
+                }
+            } else if constexpr (std::is_same_v<decltype(it), std::vector<bind>&>)
+            {
+                if (child_name == "bind")
+                {
+                    load<bind>(child, it.emplace_back());
                     success = true;
                 }
             }
@@ -867,6 +889,39 @@ namespace db
         };
     }
 
+    void sql_custom_cap(sqlite3_context* ctx, int argc, sqlite3_value** argv)
+    {
+        const char* text = reinterpret_cast<const char*>(sqlite3_value_text(argv[0]));
+        if (!text)
+        {
+            sqlite3_result_null(ctx);
+            return;
+        }
+        std::string result(text);
+        if (result.length())
+        {
+            result[0] = toupper(result[0]);
+        }
+        sqlite3_result_text(ctx, result.c_str(), -1, SQLITE_TRANSIENT);
+    }
+
+    void sql_custom_fetch(sqlite3_context* ctx, int argc, sqlite3_value** argv)
+    {
+        // Retrieve the Database object from user_data
+        // int inputId = sqlite3_value_int(argv[0]);
+        for (int i = 0 ; i < argc ; i++)
+        {
+            auto typ = sqlite3_value_type(argv[i]);
+            std::cerr << fmt::format("{}. {}\n", i, typ);
+        }
+        //
+        // try {
+        sqlite3_result_null(ctx);
+        // } catch (const SQLite::Exception& e) {
+        //     sqlite3_result_error(ctx, e.what(), -1);
+        // }
+    }
+
     std::vector<prepared_statement_metadata> init_statements(const std::vector<application>& apps)
     {
         std::vector<prepared_statement_metadata> prepared_stmts;
@@ -875,6 +930,8 @@ namespace db
             routes::namespace_lock lock(app.namespace_);
             SQLite::Database database(fmt::format("{}.sqlite", throw_if_invalid_identifier(app.name)),
                                       SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
+            database.createFunction("cap", 1, true, nullptr, sql_custom_cap, nullptr, nullptr);
+            database.createFunction("fetch", -1, true, nullptr, sql_custom_fetch, nullptr, nullptr);
             std::unordered_map<std::string, std::optional<std::reference_wrapper<const entity>>> entity_ref_map;
             for (auto& entity : app.entity)
                 entity_ref_map.emplace(throw_if_invalid_identifier(tolower(entity.name)), std::ref(entity));
@@ -896,18 +953,20 @@ namespace db
                                                 entity.name);
                 for (const auto& query : entity.queries.get)
                     prepared_stmts.
-                        emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, "get", query._comments));
+                        emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, "get",
+                                                      query._comments));
                 for (const auto& query : entity.queries.post)
                     prepared_stmts.emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params,
-                                                                 "post",query._comments,
+                                                                 "post", query._comments,
                                                                  prepared_statement_metadata::request_body));
                 for (const auto& query : entity.queries.put)
                     prepared_stmts.emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params,
-                                                                 "put",query._comments,
+                                                                 "put", query._comments,
                                                                  prepared_statement_metadata::request_body));
                 for (const auto& query : entity.queries.delete_)
                     prepared_stmts.
-                        emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, "delete",query._comments));
+                        emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, "delete",
+                                                      query._comments));
             }
         }
         return std::move(prepared_stmts);
@@ -1003,9 +1062,9 @@ namespace svc
 //----------END {0}--------
 )", id);
 
+        prepared_statement_usage = fmt::format("prepared_statement_reset(handler_{0}_prepared_statement);", id);
         if (not stat.params.empty())
         {
-            prepared_statement_usage = fmt::format("prepared_statement_reset(handler_{0}_prepared_statement);", id);
             struct_def = fmt::format("struct _{0}", id);
             if (stat.data_provider == prepared_statement_metadata::url_params)
                 uri_param_handler_def = fmt::format(
@@ -1641,7 +1700,7 @@ void log_address(unsigned long long message)
 
 namespace docs
 {
-void init_docs(const std::vector<application>& apps, const std::vector<prepared_statement_metadata>& stats);
+    void init_docs(const std::vector<application>& apps, const std::vector<prepared_statement_metadata>& stats);
     unsigned char* get_docs_html();
 }
 

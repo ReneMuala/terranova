@@ -105,11 +105,28 @@ struct param
     std::string _comments;
 };
 
+struct bind
+{
+    std::string name;
+    std::string from;
+    std::string _comments;
+};
+
+struct data
+{
+    std::string name;
+    std::string query;
+    int limit;
+    std::vector<struct bind> params;
+    std::string _comments;
+};
+
 struct get
 {
     std::string name;
     std::string sql;
     std::vector<struct param> params;
+    std::vector<struct data> data;
     std::string _comments;
 };
 
@@ -118,6 +135,7 @@ struct post
     std::string name;
     std::string sql;
     std::vector<struct param> params;
+    std::vector<struct data> data;
     std::string _comments;
 };
 
@@ -126,6 +144,7 @@ struct put
     std::string name;
     std::string sql;
     std::vector<struct param> params;
+    std::vector<struct data> data;
     std::string _comments;
 };
 
@@ -134,6 +153,7 @@ struct delete_
     std::string name;
     std::string sql;
     std::vector<struct param> params;
+    std::vector<struct data> data;
     std::string _comments;
 };
 
