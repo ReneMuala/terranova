@@ -116,8 +116,8 @@ struct data
 {
     std::string name;
     std::string query;
-    int limit;
-    std::vector<struct bind> params;
+    std::string entity;
+    std::vector<struct bind> binds;
     std::string _comments;
 };
 
@@ -128,6 +128,7 @@ struct get
     std::vector<struct param> params;
     std::vector<struct data> data;
     std::string _comments;
+    unsigned long long _index;
 };
 
 struct post
@@ -137,6 +138,7 @@ struct post
     std::vector<struct param> params;
     std::vector<struct data> data;
     std::string _comments;
+    unsigned long long _index;
 };
 
 struct put
@@ -146,6 +148,7 @@ struct put
     std::vector<struct param> params;
     std::vector<struct data> data;
     std::string _comments;
+    unsigned long long _index;
 };
 
 struct delete_
@@ -155,6 +158,7 @@ struct delete_
     std::vector<struct param> params;
     std::vector<struct data> data;
     std::string _comments;
+    unsigned long long _index;
 };
 
 struct queries
@@ -205,6 +209,7 @@ struct entity
     struct queries queries;
     struct views views;
     std::string _comments;
+    unsigned long long _4x_padded_index;
 };
 
 struct prepared_statement_metadata
@@ -215,6 +220,7 @@ struct prepared_statement_metadata
         request_body,
     };
 
+    std::string name;
     std::string entity;
     std::string route;
     std::string method = "get";
@@ -222,6 +228,9 @@ struct prepared_statement_metadata
     std::vector<struct param> params;
     data_provider_t data_provider = url_params;
     std::string _comments;
+    bool is_composed = true;
+    std::vector<struct data> data;
+    unsigned long long index;
 };
 
 struct generated_implementation
@@ -232,6 +241,7 @@ struct generated_implementation
     std::string method;
     std::string code;
     void* prepared_statement{};
+    bool is_composed = false;
 };
 
 struct auth
