@@ -14,6 +14,7 @@
 #include "uriparser/Uri.h"
 #include "types.hpp"
 #include <sqlite3.h>
+#include <unordered_set>
 std::unordered_map<std::string, std::any> handlers;
 
 template <typename T>
@@ -92,6 +93,7 @@ inline std::string get_canonical_name()
     bool fetched_fields = false;
     for_each(type, [&cann_name, &fetched_fields](auto& field, auto name, auto index)
     {
+        if (name.starts_with("_")) return;
         std::string type_name;
         if constexpr (std::is_same_v<decltype(field), std::string&>)
             type_name = "string";
@@ -152,8 +154,20 @@ void get_loader()
 template <typename T>
 void load(kdl::Node& node, T& type)
 {
+    static unsigned long long global_index = 1;
     using namespace ylt::reflection;
     const auto struct_name = get_struct_name<T>();
+    if (has_field<T>("_index"))
+    {
+        auto& _index = ylt::reflection::get<unsigned long long>(type, "_index");
+        _index = global_index++;
+    }
+    if (has_field<T>("_4x_padded_index"))
+    {
+        auto& _4x_padded_index = ylt::reflection::get<unsigned long long>(type, "_4x_padded_index");
+        _4x_padded_index = global_index;
+        global_index+=4ull;
+    }
     if (has_field<T>("_comments"))
     {
         auto& _comments = ylt::reflection::get<std::string>(type, "_comments");
@@ -440,7 +454,12 @@ inline std::string toupper(std::string str)
     std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return std::toupper(c); });
     return str;
 }
-
+inline const std::string& second_if_empty(const std::string& first, const std::string& second)
+{
+    if (first.empty())
+        return second;
+    return first;
+}
 void load(kdl::Document& document, std::vector<application>& apps)
 {
     for (auto& node : document.nodes())
@@ -513,13 +532,6 @@ namespace db
         if (std::regex_match(identifier, std::regex(R"(\w+)")))
             return identifier;
         throw std::runtime_error(fmt::format("\"{}\" is not a valid identifier", identifier));
-    }
-
-    inline const std::string& second_if_empty(const std::string& first, const std::string& second)
-    {
-        if (first.empty())
-            return second;
-        return first;
     }
 
     const field& get_field(const std::string& entity_name, const std::string& field_name,
@@ -604,7 +616,7 @@ namespace db
                            get_sql_type(throw_if_invalid_identifier(type)), extras);
     }
 
-    void init_entity(SQLite::Database& database, const entity& entity,
+    bool init_entity(SQLite::Database& database, const entity& entity,
                      const std::unordered_map<std::string, std::optional<std::reference_wrapper<const ::entity>>>& em)
     {
         std::string stmt = fmt::format("CREATE TABLE IF NOT EXISTS {} (",
@@ -649,21 +661,22 @@ namespace db
             fks = "," + fks;
             fks.pop_back();
         }
-
-        stmt.append(fmt::format("{});", fks));
-        LOG(INFO) << fmt::format("exec \"{}\"", stmt);
-        database.exec(stmt);
+        if (fields)
+        {
+            stmt.append(fmt::format("{});", fks));
+            LOG(INFO) << fmt::format("exec \"{}\"", stmt);
+            database.exec(stmt);
+        }
+        return fields;
     }
 
-    prepared_statement_metadata init_stmt_select(const SQLite::Database& database, const entity& entity,
-                                                 const std::unordered_map<
-                                                     std::string, std::optional<std::reference_wrapper<const ::entity>>>
-                                                 & em)
+    prepared_statement_metadata init_stmt_select(const SQLite::Database& database, const entity& entity, unsigned long long index)
     {
         auto stmt = fmt::format("SELECT {0}.* FROM {0} LIMIT :limit OFFSET :offset;",
                                 throw_if_invalid_identifier(tolower(entity.name)));
         LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
         return prepared_statement_metadata{
+            .name =  "select",
             .entity = entity.name,
             .route = to_route(entity.name),
             .method = "get",
@@ -672,6 +685,8 @@ namespace db
                 param{"limit", "int"},
                 param{"offset", "int"},
             },
+            .is_composed =  false,
+            .index = index
         };
     }
 
@@ -689,7 +704,7 @@ namespace db
                                                  const std::unordered_map<
                                                      std::string, std::optional<std::reference_wrapper<const ::entity>>>
                                                  &
-                                                 em)
+                                                 em, unsigned long long index)
     {
         std::string stmt = fmt::format("INSERT INTO {} ", throw_if_invalid_identifier(tolower(entity.name)));
         std::string values, value_fields;
@@ -735,12 +750,15 @@ namespace db
         stmt = fmt::format("{} ({}) VALUES({});", stmt, values, value_fields);
         LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
         return {
+            .name =  "insert",
             .entity = entity.name,
             .route = to_route(entity.name),
             .method = "post",
             .statement = SQLite::Statement(database, stmt),
             .params = params,
-            .data_provider = prepared_statement_metadata::request_body
+            .data_provider = prepared_statement_metadata::request_body,
+            .is_composed =  false,
+            .index = index
         };
     }
 
@@ -753,7 +771,7 @@ namespace db
                                                  const std::unordered_map<
                                                      std::string, std::optional<std::reference_wrapper<const ::entity>>>
                                                  &
-                                                 em)
+                                                 em, unsigned long long index)
     {
         std::vector<struct param> params;
         std::string sets;
@@ -800,20 +818,19 @@ namespace db
                                        throw_if_invalid_identifier(tolower(entity.name)), sets, pk_name);
         LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
         return {
+            .name = "update",
             .entity = entity.name,
             .route = to_route(entity.name),
             .method = "put",
             .statement = SQLite::Statement(database, stmt),
             .params = params,
-            .data_provider = prepared_statement_metadata::request_body
+            .data_provider = prepared_statement_metadata::request_body,
+            .is_composed =  false,
+            .index = index
         };
     }
 
-    prepared_statement_metadata init_stmt_delete(const SQLite::Database& database, const entity& entity,
-                                                 const std::unordered_map<
-                                                     std::string, std::optional<std::reference_wrapper<const ::entity>>>
-                                                 &
-                                                 em)
+    prepared_statement_metadata init_stmt_delete(const SQLite::Database& database, const entity& entity,unsigned long long index)
     {
         std::string pk_name;
         std::vector<struct param> params;
@@ -826,12 +843,15 @@ namespace db
                                        throw_if_invalid_identifier(tolower(entity.name)), pk_name);
         LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
         return prepared_statement_metadata{
+            .name = "delete",
             .entity = entity.name,
             .route = to_route(entity.name),
             .method = "delete",
             .statement = SQLite::Statement(database, stmt),
             .params = params,
-            .data_provider = prepared_statement_metadata::url_params
+            .data_provider = prepared_statement_metadata::url_params,
+            .is_composed =  false,
+            .index = index
         };
     }
 
@@ -856,13 +876,14 @@ namespace db
         }
     }
 
-    prepared_statement_metadata init_stmt_custom_raw(const SQLite::Database& database, const entity& entity,
-                                                 std::string name, std::string stmt,
-                                                 const std::vector<param>& params,
-                                                 const std::string http_method,
-                                                 const std::string& comments,
-                                                 const prepared_statement_metadata::data_provider_t data_provider_type =
-                                                     prepared_statement_metadata::url_params)
+    prepared_statement_metadata init_stmt_custom_sql(const SQLite::Database& database, const entity& entity,
+                                                     const std::string & name, std::string stmt,
+                                                     const std::vector<param>& params,
+                                                     const std::string& http_method,
+                                                     const std::string& comments,
+                                                     const unsigned long long index,
+                                                     const prepared_statement_metadata::data_provider_t data_provider_type =
+                                                         prepared_statement_metadata::url_params)
     {
         std::vector<param> stat_params;
         stmt = std::regex_replace(stmt, std::regex(R"(\{table\})"), entity.name);
@@ -871,39 +892,92 @@ namespace db
         std::sregex_iterator begin = std::sregex_iterator(stmt.begin(), stmt.end(), param_regex);
         std::sregex_iterator end;
         check_query_param_types(params);
+        std::unordered_set<std::string> detected_params;
         for (auto i = begin; i != end; ++i)
         {
             const std::string param = (*i).str();
             if (not contains(param, params))
                 throw std::invalid_argument(fmt::format("query param \"{}\" is not specified", param));
+            detected_params.insert(param.substr(1));
         }
         for (const auto& param : params)
         {
+            if (not detected_params.contains(param.name))
+                throw std::runtime_error(fmt::format("param \"{}\" has no usage in query \"{}\"", param.name, name));
             stat_params.emplace_back(throw_if_invalid_identifier(param.name), get_c_type(param.type), param._comments);
         }
         return prepared_statement_metadata{
+            .name = name,
             .entity = entity.name,
             .route = to_route(entity.name) + to_route(name, false),
             .method = http_method,
             .statement = SQLite::Statement(database, stmt),
             .params = stat_params,
-            ._comments = comments
+            ._comments = comments,
+            .is_composed =  false,
+            .index = index
+        };
+    }
+
+    prepared_statement_metadata init_stmt_custom_composed(const SQLite::Database& database, const entity& entity,
+                                                     const std::string & name, const std::vector<struct data>& data,
+                                                     const std::vector<param>& params,
+                                                     const std::string& http_method,
+                                                     const std::string& comments,
+                                                     const unsigned long long index,
+                                                     const prepared_statement_metadata::data_provider_t data_provider_type =
+                                                         prepared_statement_metadata::url_params)
+    {
+        std::vector<param> stat_params;
+        LOG(INFO) << fmt::format("prepare custom statement (\"{}\") \"{}\"", name, "<data>");
+        for (const auto& param : params)
+        {
+            stat_params.emplace_back(throw_if_invalid_identifier(param.name), get_c_type(param.type), param._comments);
+            bool has_match = false;
+            for (const auto & data_item: data)
+            {
+                if (has_match) break;
+                for (const auto & bind: data_item.binds)
+                {
+                    if (second_if_empty(bind.from, bind.name) == param.name)
+                    {
+                        has_match = true;
+                        break;
+                    }
+                }
+            }
+            if (not has_match)
+                throw std::runtime_error(fmt::format("param \"{}\" has no usage in query \"{}\"", param.name, name));
+        }
+        return prepared_statement_metadata{
+            .name = name,
+            .entity = entity.name,
+            .route = to_route(entity.name) + to_route(name, false),
+            .method = http_method,
+            .statement = SQLite::Statement(database, "SELECT 1 as result"),
+            .params = stat_params,
+            ._comments = comments,
+            .is_composed =  true,
+            .data = data,
+            .index = index
         };
     }
 
     inline prepared_statement_metadata init_stmt_custom(const SQLite::Database& database, const entity& entity,
-                                                 std::string name, std::string stmt,
-                                                 const std::vector<param>& params,
-                                                 const std::string http_method,
-                                                 const std::string& comments,
-                                                 const prepared_statement_metadata::data_provider_t data_provider_type =
-                                                     prepared_statement_metadata::url_params)
+                                                        const std::string & name, const std::string stmt,
+                                                        const std::vector<param>& params,
+                                                        const std::vector<data>& data,
+                                                        const std::string& http_method,
+                                                        const std::string& comments,
+                                                        const unsigned long long index,
+                                                        const prepared_statement_metadata::data_provider_t data_provider_type =
+                                                            prepared_statement_metadata::url_params)
     {
-        if(not stmt.empty()) {
-            return init_stmt_custom_raw(database, entity, name, stmt, params, http_method, comments);
-        } else {
-            throw std::runtime_error("composed statements are a work in progress");
-        }
+        if(not stmt.empty())
+            return init_stmt_custom_sql(database, entity, name, stmt, params, http_method, comments, index);
+        if (not data.empty())
+            return init_stmt_custom_composed(database, entity, name, data, params, http_method, comments, index);
+        throw std::runtime_error(fmt::format("\"{}\" query should a sql param xor a data children.", name));
     }
 
     void sql_custom_cap(sqlite3_context* ctx, int argc, sqlite3_value** argv)
@@ -955,35 +1029,37 @@ namespace db
             for (auto& entity : app.entity)
             {
                 LOG(INFO) << fmt::format("generating queries for \"{}\"", entity.name);
-                init_entity(database, entity, entity_ref_map);
-                prepared_stmts.emplace_back(init_stmt_select(database, entity, entity_ref_map));
-                prepared_stmts.emplace_back(init_stmt_insert(database, entity, entity_ref_map));
-                if (entity.schema.pk)
-                    prepared_stmts.emplace_back(init_stmt_update(database, entity, entity_ref_map));
-                else
-                    LOG(WARNING) << fmt::format("could not generate update statement for \"{}\", reason: no pk",
-                                                entity.name);
-                if (entity.schema.pk)
-                    prepared_stmts.emplace_back(init_stmt_delete(database, entity, entity_ref_map));
-                else
-                    LOG(WARNING) << fmt::format("could not generate delete statement for \"{}\", reason: no pk",
-                                                entity.name);
+                if (init_entity(database, entity, entity_ref_map))
+                {
+                    prepared_stmts.emplace_back(init_stmt_select(database, entity, entity._4x_padded_index));
+                    prepared_stmts.emplace_back(init_stmt_insert(database, entity, entity_ref_map, entity._4x_padded_index+1));
+                    if (entity.schema.pk)
+                        prepared_stmts.emplace_back(init_stmt_update(database, entity, entity_ref_map, entity._4x_padded_index+2));
+                    else
+                        LOG(WARNING) << fmt::format("could not generate update statement for \"{}\", reason: no pk",
+                                                    entity.name);
+                    if (entity.schema.pk)
+                        prepared_stmts.emplace_back(init_stmt_delete(database, entity, entity._4x_padded_index+3));
+                    else
+                        LOG(WARNING) << fmt::format("could not generate delete statement for \"{}\", reason: no pk",
+                                                    entity.name);
+                }
                 for (const auto& query : entity.queries.get)
                     prepared_stmts.
-                        emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, "get",
-                                                      query._comments));
+                        emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, query.data, "get",
+                                                      query._comments, query._index));
                 for (const auto& query : entity.queries.post)
-                    prepared_stmts.emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params,
-                                                                 "post", query._comments,
+                    prepared_stmts.emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, query.data,
+                                                                 "post", query._comments, query._index,
                                                                  prepared_statement_metadata::request_body));
                 for (const auto& query : entity.queries.put)
-                    prepared_stmts.emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params,
-                                                                 "put", query._comments,
+                    prepared_stmts.emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, query.data,
+                                                                 "put", query._comments, query._index,
                                                                  prepared_statement_metadata::request_body));
                 for (const auto& query : entity.queries.delete_)
                     prepared_stmts.
-                        emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, "delete",
-                                                      query._comments));
+                        emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, query.data, "delete",
+                                                      query._comments, query._index));
             }
         }
         return std::move(prepared_stmts);
@@ -1061,10 +1137,9 @@ namespace svc
     //     };
     // }
 
-    generated_implementation generate_implementation(const prepared_statement_metadata& stat)
+    generated_implementation generate_implementation(const prepared_statement_metadata& stat, const std::function<void(const std::string & en, const std::string & qn, const std::function<void(const prepared_statement_metadata&)>& cbk)>& find_stmt)
     {
-        static int id = 0;
-        id++;
+        unsigned long long id = stat.index;
         std::string struct_def;
         std::string uri_param_handler_def;
         std::string output_handler_def;
@@ -1168,6 +1243,50 @@ namespace svc
         }
         prepared_statement_usage += fmt::format(
             "result = prepared_statement_get_results_json(handler_{0}_prepared_statement);", id);
+        if (stat.is_composed)
+        {
+            // we don't need to use prepared statements in composed queries
+            prepared_statement_usage.clear();
+            for (const auto & data_item : stat.data)
+            {
+                find_stmt(db::throw_if_invalid_identifier(second_if_empty(data_item.entity, stat.entity)), data_item.query, [&stat, &data_item, &prepared_statement_usage](const prepared_statement_metadata & target)
+                {
+                    prepared_statement_usage += "{";
+                    if (data_item.binds.size() != target.params.size())
+                        throw std::runtime_error(fmt::format(R"(data item "{}" in query "{}" has {} bindings than required for query "{}")", data_item.name, stat.name, data_item.binds.size() > target.params.size() ? "more" : "less", target.name));
+                    for (const auto & target_param : target.params)
+                    {
+                        bool target_param_found = false;
+                        for (const auto & bind : data_item.binds)
+                        {
+                            if (bind.name == target_param.name)
+                            {
+                                auto from = second_if_empty(bind.from, bind.name);
+                                std::optional<struct param> binding_parameter;
+                                for (auto & stat_parameter : stat.params)
+                                {
+                                    if (stat_parameter.name == from)
+                                    {
+                                         binding_parameter = stat_parameter;
+                                    }
+                                }
+                                if (not binding_parameter)
+                                    throw std::runtime_error(fmt::format(R"(bind "{}" in data item "{}" didn't match any param in query "{}")", bind.name, data_item.name, stat.name));
+                                if (binding_parameter->type != target_param.type)
+                                    throw std::runtime_error(fmt::format(R"(type mismatch between binding "{}" in data item "{}" and the correspondent param in query "{}")", bind.name, data_item.name, target.name));
+                                target_param_found = true;
+                                break;
+                            }
+                        }
+                        if (!target_param_found)
+                        {
+                            throw std::runtime_error(fmt::format(R"(param "{}" from query "{}" was not bound in data item "{}")", target_param.name, target.name, stat.name));
+                        }
+                    }
+                    prepared_statement_usage += "}";
+                });
+            }
+        }
         std::string body_def;
         if (stat.data_provider == prepared_statement_metadata::url_params and not stat.params.empty())
             body_def = fmt::format(
@@ -1192,6 +1311,19 @@ namespace svc
             .prepared_statement = (void*)&stat.statement
         };
     }
+
+     void find_stmt_or_throw(const std::vector<prepared_statement_metadata>& queries, const std::string & entity_name, const std::string & query_name, const std::function<void(const prepared_statement_metadata&)> callback)
+    {
+        for (const auto& query : queries)
+        {
+            if (query.entity == entity_name and query.name == query_name)
+            {
+                callback(query);
+                return;
+            }
+        }
+        throw std::runtime_error(fmt::format("query \"{}\" not found in entity \"{}\"", query_name, entity_name));
+    };
 
     std::pair<std::vector<generated_implementation>, std::string> init_services(
         std::vector<prepared_statement_metadata>& queries)
@@ -1285,15 +1417,20 @@ bool get_request_body(
 )";
         std::vector<generated_implementation> impls;
         // service svc1("default");
+
+        const std::function<void(const std::string & en, const std::string & qn, std::function<void(const prepared_statement_metadata&)> cbk)> find_stmt = [&queries](const std::string & en, const std::string & qn, const std::function<void(const prepared_statement_metadata&)> & cbk)
+        {
+            find_stmt_or_throw(queries, en, qn, cbk);
+        };
         for (auto& query : queries)
         {
-            auto result = generate_implementation(query);
+            auto result = generate_implementation(query, find_stmt);
             code += result.code;
             result.code.clear();
             impls.emplace_back(result);
         }
-        // LOG(INFO) << "// code: ";
-        // std::cerr << code << std::endl;
+        LOG(INFO) << "// code: ";
+        std::cerr << code << std::endl;
         // return std::move(svc1)
         return std::make_pair<std::vector<generated_implementation>, std::string>(std::move(impls), std::move(code));
     }
@@ -1409,6 +1546,7 @@ const char* prepared_statement_get_results_json(void* prepared_statement)
         yyjson_mut_val* data_item = yyjson_mut_obj(output_doc);
         for (int i = 0; i < col_count; ++i)
         {
+    // LOG(ERROR) << __FILE__ << "/" << __FUNCTION__ << ":" << __LINE__;
             const auto& column = stat->getColumn(i);
             const auto type = column.getType();
             if (type == SQLite::INTEGER)
