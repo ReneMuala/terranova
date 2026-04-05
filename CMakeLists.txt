@@ -5,27 +5,26 @@
 # project
 cmake_minimum_required(VERSION 3.15.0)
 cmake_policy(SET CMP0091 NEW)
-project(logi LANGUAGES CXX C)
+project(terranova LANGUAGES CXX C)
 set(CURRENT_COMPILER_ID ${CMAKE_CXX_COMPILER_ID})
 
 # target
-add_executable(logi "")
-set_target_properties(logi PROPERTIES OUTPUT_NAME "logi")
-set_target_properties(logi PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/windows/x64/release")
-target_include_directories(logi PRIVATE
-    deps/CppConsoleTable
-    deps/supernova
+add_executable(terranova "")
+set_target_properties(terranova PROPERTIES OUTPUT_NAME "terranova")
+set_target_properties(terranova PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/windows/x64/release")
+target_include_directories(terranova PRIVATE
     deps/ckdl/include
     deps/ckdl/bindings/cpp/include
+    deps/tcc/tcc-0.9.27
+    build/.gens/terranova/windows/x64/release/rules/utils/bin2c
 )
-target_include_directories(logi SYSTEM PRIVATE
-    C:/Users/dte/AppData/Local/.xmake/packages/p/pugixml/v1.15/62451b04cb8d446fb52d4c6d38b1e19b/include
+target_include_directories(terranova SYSTEM PRIVATE
     C:/Users/dte/AppData/Local/.xmake/packages/f/fmt/12.1.0/8f0ce3998f644e1ab0b837652267d872/include
-    C:/Users/dte/AppData/Local/.xmake/packages/d/drogon/v1.9.11/1d620a828fda46e5866d28107c77d75a/include
+    C:/Users/dte/AppData/Local/.xmake/packages/d/drogon/v1.9.12/b9027bcc53294e69876e5ad152437b8a/include
     C:/Users/dte/AppData/Local/.xmake/packages/j/jsoncpp/1.9.6/1cbf809eae5d482b9e3c6ae22293363c/include
     C:/Users/dte/AppData/Local/.xmake/packages/b/brotli/v1.2.0/7924c0cf5ff54df6bf0a20a7f61ffe79/include
-    C:/Users/dte/AppData/Local/.xmake/packages/z/zlib/v1.3.1/95786712bac941e795afa187a68143a4/include
-    C:/Users/dte/AppData/Local/.xmake/packages/t/trantor/v1.5.25/04ce9ae5c5aa419b94e3ac02224690ad/include
+    C:/Users/dte/AppData/Local/.xmake/packages/z/zlib/v1.3.2/1087d98a25354760941affad70a541d9/include
+    C:/Users/dte/AppData/Local/.xmake/packages/t/trantor/v1.5.26/16297e37897f456f846b849564a6e85f/include
     C:/Users/dte/AppData/Local/.xmake/packages/o/openssl/1.1.1-w/290075b839ee412e80953472c36e007b/include
     C:/Users/dte/AppData/Local/.xmake/packages/c/c-ares/1.34.6/77af850d3a4544028f78aa740ad9914a/include
     C:/Users/dte/AppData/Local/.xmake/packages/g/glog/v0.7.1/610eac227e50484291bd9d8b01de37d6/include
@@ -33,46 +32,49 @@ target_include_directories(logi SYSTEM PRIVATE
     C:/Users/dte/AppData/Local/.xmake/packages/i/iguana/1.0.9/7c88cdbeb9aa4bce90e2ed0c1f083785/include
     C:/Users/dte/AppData/Local/.xmake/packages/f/frozen/1.2.0/ebb05b30a6e74dba9981819519433d0d/include
     C:/Users/dte/AppData/Local/.xmake/packages/s/sqlitecpp/3.3.3/33c7042408f04a3ab8ca7543f3216206/include
+    C:/Users/dte/AppData/Local/.xmake/packages/y/yyjson/0.12.0/2f47bb39ad33499da4199f6e60247e0b/include
+    C:/Users/dte/AppData/Local/.xmake/packages/u/uriparser/0.9.8/8fefdd8166774aa28dcf198b259a3d9a/include
 )
-target_compile_definitions(logi PRIVATE
+target_compile_definitions(terranova PRIVATE
     KDL_STATIC_LIB
     KDLPP_STATIC_LIB
     TRANTOR_STATIC_DEFINE
     CARES_STATICLIB
     GLOG_NO_ABBREVIATED_SEVERITIES
     GFLAGS_IS_A_DLL=0
+    URI_STATIC_BUILD
 )
-target_compile_options(logi PRIVATE
+target_compile_options(terranova PRIVATE
     $<$<COMPILE_LANGUAGE:C>:-DNDEBUG>
     $<$<COMPILE_LANGUAGE:CXX>:-DNDEBUG>
+    $<$<COMPILE_LANGUAGE:CXX>:/bigobj>
     $<$<COMPILE_LANGUAGE:CXX>:/utf-8>
     $<$<COMPILE_LANGUAGE:CUDA>:-DNDEBUG>
 )
 if(CURRENT_COMPILER_ID STREQUAL "MSVC")
-    target_compile_options(logi PRIVATE /EHsc)
+    target_compile_options(terranova PRIVATE /EHsc)
 elseif(CURRENT_COMPILER_ID STREQUAL "Clang")
-    target_compile_options(logi PRIVATE -fexceptions)
-    target_compile_options(logi PRIVATE -fcxx-exceptions)
+    target_compile_options(terranova PRIVATE -fexceptions)
+    target_compile_options(terranova PRIVATE -fcxx-exceptions)
 elseif(CURRENT_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(logi PRIVATE -fexceptions)
+    target_compile_options(terranova PRIVATE -fexceptions)
 endif()
-set_target_properties(logi PROPERTIES CXX_EXTENSIONS OFF)
-target_compile_features(logi PRIVATE cxx_std_23)
+set_target_properties(terranova PROPERTIES CXX_EXTENSIONS OFF)
+target_compile_features(terranova PRIVATE cxx_std_23)
 if(CURRENT_COMPILER_ID STREQUAL "MSVC")
-    target_compile_options(logi PRIVATE $<$<CONFIG:Release>:-O2>)
+    target_compile_options(terranova PRIVATE $<$<CONFIG:Release>:-O2>)
 else()
-    target_compile_options(logi PRIVATE -O3)
+    target_compile_options(terranova PRIVATE -O3)
 endif()
 if(CURRENT_COMPILER_ID STREQUAL "MSVC")
 else()
-    target_compile_options(logi PRIVATE -fvisibility=hidden)
+    target_compile_options(terranova PRIVATE -fvisibility=hidden)
 endif()
 if(CURRENT_COMPILER_ID STREQUAL "MSVC")
-    set_property(TARGET logi PROPERTY
+    set_property(TARGET terranova PROPERTY
         MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
 endif()
-target_link_libraries(logi PRIVATE
-    pugixml
+target_link_libraries(terranova PRIVATE
     fmt
     drogon
     jsoncpp
@@ -88,6 +90,8 @@ target_link_libraries(logi PRIVATE
     gflags_static
     sqlite3
     SQLiteCpp
+    yyjson
+    uriparser
     ws2_32
     rpcrt4
     crypt32
@@ -97,27 +101,29 @@ target_link_libraries(logi PRIVATE
     dbghelp
     shlwapi
 )
-target_link_directories(logi PRIVATE
-    C:/Users/dte/AppData/Local/.xmake/packages/p/pugixml/v1.15/62451b04cb8d446fb52d4c6d38b1e19b/lib
+target_link_directories(terranova PRIVATE
     C:/Users/dte/AppData/Local/.xmake/packages/f/fmt/12.1.0/8f0ce3998f644e1ab0b837652267d872/lib
-    C:/Users/dte/AppData/Local/.xmake/packages/d/drogon/v1.9.11/1d620a828fda46e5866d28107c77d75a/lib
+    C:/Users/dte/AppData/Local/.xmake/packages/d/drogon/v1.9.12/b9027bcc53294e69876e5ad152437b8a/lib
     C:/Users/dte/AppData/Local/.xmake/packages/j/jsoncpp/1.9.6/1cbf809eae5d482b9e3c6ae22293363c/lib
     C:/Users/dte/AppData/Local/.xmake/packages/b/brotli/v1.2.0/7924c0cf5ff54df6bf0a20a7f61ffe79/lib
-    C:/Users/dte/AppData/Local/.xmake/packages/z/zlib/v1.3.1/95786712bac941e795afa187a68143a4/lib
-    C:/Users/dte/AppData/Local/.xmake/packages/t/trantor/v1.5.25/04ce9ae5c5aa419b94e3ac02224690ad/lib
+    C:/Users/dte/AppData/Local/.xmake/packages/z/zlib/v1.3.2/1087d98a25354760941affad70a541d9/lib
+    C:/Users/dte/AppData/Local/.xmake/packages/t/trantor/v1.5.26/16297e37897f456f846b849564a6e85f/lib
     C:/Users/dte/AppData/Local/.xmake/packages/o/openssl/1.1.1-w/290075b839ee412e80953472c36e007b/lib
     C:/Users/dte/AppData/Local/.xmake/packages/c/c-ares/1.34.6/77af850d3a4544028f78aa740ad9914a/lib
     C:/Users/dte/AppData/Local/.xmake/packages/g/glog/v0.7.1/610eac227e50484291bd9d8b01de37d6/lib
     C:/Users/dte/AppData/Local/.xmake/packages/g/gflags/v2.3.0/7dc5fb5cfc7d46dc86da6ca066870286/lib
     C:/Users/dte/AppData/Local/.xmake/packages/s/sqlitecpp/3.3.3/33c7042408f04a3ab8ca7543f3216206/lib
+    C:/Users/dte/AppData/Local/.xmake/packages/y/yyjson/0.12.0/2f47bb39ad33499da4199f6e60247e0b/lib
+    C:/Users/dte/AppData/Local/.xmake/packages/u/uriparser/0.9.8/8fefdd8166774aa28dcf198b259a3d9a/lib
 )
-# private sourcefiles from sourcebatch c++.build for target logi
-target_sources(logi PRIVATE 
+# private sourcefiles from sourcebatch c++.build for target terranova
+target_sources(terranova PRIVATE 
+    src/docs.cpp
     src/main.cpp
     deps/ckdl/bindings/cpp/src/kdlpp.cpp
 )
-# private sourcefiles from sourcebatch c.build for target logi
-target_sources(logi PRIVATE 
+# private sourcefiles from sourcebatch c.build for target terranova
+target_sources(terranova PRIVATE 
     deps/ckdl/src/bigint.c
     deps/ckdl/src/compat.c
     deps/ckdl/src/emitter.c
@@ -125,5 +131,6 @@ target_sources(logi PRIVATE
     deps/ckdl/src/str.c
     deps/ckdl/src/tokenizer.c
     deps/ckdl/src/utf8.c
+    deps/tcc/tcc-0.9.27/libtcc.c
 )
 
