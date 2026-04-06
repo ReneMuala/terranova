@@ -1262,17 +1262,24 @@ namespace svc
         {
             // we don't need to use prepared statements in composed queries
             prepared_statement_usage.clear();
-            prepared_statement_usage.append("void * result_obj = 0;void * result_obj_data_field = 0;");
+            prepared_statement_usage.append("void * result_obj = 0;void * result_obj_root = 0;");
             int nested_index = 0;
+            std::unordered_set<std::string> data_item_names;
             for (const auto & data_item : stat.data)
             {
-                find_stmt(db::throw_if_invalid_identifier(second_if_empty(data_item.entity, stat.entity)), data_item.query, [&prepared_stat_array,&nested_index,&stat, &data_item, &prepared_statement_usage](const prepared_statement_metadata & target)
+                if (data_item_names.contains(data_item.name))
+                        throw std::runtime_error(fmt::format(R"(data item name "{}" cannot be repeated, in query "{}")", data_item.name, stat.name));
+                data_item_names.insert(data_item.name);
+                find_stmt(db::throw_if_invalid_identifier(second_if_empty(data_item.entity, stat.entity)), second_if_empty(data_item.query, data_item.name), [&prepared_stat_array,&nested_index,&stat, &data_item, &prepared_statement_usage](const prepared_statement_metadata & target)
                 {
                     prepared_statement_usage.append("{");
                     prepared_stat_array[nested_index] = (void*)&target.statement;
                     prepared_statement_usage.append(fmt::format(R"(void * handler_{}_prepared_statement = ((void**)handler_{}_prepared_statement)[{}];)", target.index, stat.index, nested_index++));
+                    if (target.is_composed)
+                        throw std::runtime_error(fmt::format(R"(composed query "{}" cannot be used inside of another composed query "{}")", target.name, stat.name));
                     if (data_item.binds.size() != target.params.size())
                         throw std::runtime_error(fmt::format(R"(data item "{}" in query "{}" has {} bindings than required for query "{}")", data_item.name, stat.name, data_item.binds.size() > target.params.size() ? "more" : "less", target.name));
+                    prepared_statement_usage.append(fmt::format("prepared_statement_reset(handler_{0}_prepared_statement);", target.index));
                     for (const auto & target_param : target.params)
                     {
                         bool target_param_found = false;
@@ -1293,7 +1300,7 @@ namespace svc
                                     throw std::runtime_error(fmt::format(R"(bind "{}" in data item "{}" didn't match any param in query "{}")", bind.name, data_item.name, stat.name));
                                 if (binding_parameter->type != target_param.type)
                                     throw std::runtime_error(fmt::format(R"(type mismatch between binding "{}" in data item "{}" and the correspondent param in query "{}")", bind.name, data_item.name, target.name));
-                                const std::string type = target_param.type == "const char *" ? "string" : target_param.type;
+                                const std::string type = target_param.type == "const char *" ? "const_char" : target_param.type;
                                 prepared_statement_usage += fmt::format(R"(bind_statement_{}(handler_{}_prepared_statement, ":{}", input.{});)", type, target.index, target_param.name, binding_parameter->name);
                                 target_param_found = true;
                                 break;
@@ -1304,7 +1311,7 @@ namespace svc
                             throw std::runtime_error(fmt::format(R"(param "{}" from query "{}" was not bound in data item "{}")", target_param.name, target.name, stat.name));
                         }
                     }
-                    prepared_statement_usage.append(fmt::format(R"(prepared_statement_append_results_json(result_obj, result_obj_data_field,"{}",handler_{}_prepared_statement);)", data_item.name, target.index));
+                    prepared_statement_usage.append(fmt::format(R"(prepared_statement_append_results_json(&result_obj, &result_obj_root,"{}",handler_{}_prepared_statement);)", data_item.name, target.index));
                     prepared_statement_usage += "}";
                 });
             }
@@ -1442,7 +1449,7 @@ const char * prepared_statement_finish_results_json(
     void * result);
 void prepared_statement_append_results_json(
     void ** result,
-    void ** data_field,
+    void ** root_field,
     const char * section,
     void* prepared_statement);
 )";
@@ -1572,21 +1579,18 @@ const char * prepared_statement_finish_results_json(void * result)
     return NULL;
 }
 
-void prepared_statement_append_results_json(void ** result, void ** data_field,const char * section,void* prepared_statement)
+void prepared_statement_append_results_json(void ** result, void ** root_field,const char * section,void* prepared_statement)
 {
     SQLite::Statement* stat = (SQLite::Statement*)prepared_statement;
-    yyjson_mut_val* data = (yyjson_mut_val*)*data_field;
+    yyjson_mut_val* output_root = (yyjson_mut_val*)*root_field;
     yyjson_mut_doc* output_doc = (yyjson_mut_doc*)*result;
     if (not *result)
     {
         *result = yyjson_mut_doc_new(NULL);
         output_doc = (yyjson_mut_doc*)*result;
-        yyjson_mut_val* output_root = yyjson_mut_obj(output_doc);
+        *root_field = yyjson_mut_obj(output_doc);
+        output_root = (yyjson_mut_val*)*root_field;
         yyjson_mut_doc_set_root(output_doc, output_root);
-
-        *data_field = yyjson_mut_obj(output_doc);
-        data = (yyjson_mut_val*)*data_field;
-        yyjson_mut_obj_add_val(output_doc, output_root, "data", data);
     }
     yyjson_mut_val* data_arr = yyjson_mut_arr(output_doc);
     unsigned long long count = 0;
@@ -1613,7 +1617,7 @@ void prepared_statement_append_results_json(void ** result, void ** data_field,c
         yyjson_mut_arr_add_val(data_arr, data_item);
     }
     const auto current_obj = yyjson_mut_obj(output_doc);
-    yyjson_mut_obj_add_val(output_doc, data, section, current_obj);
+    yyjson_mut_obj_add_val(output_doc, output_root, section, current_obj);
     yyjson_mut_obj_add_val(output_doc, current_obj, "data", data_arr);
     yyjson_mut_obj_add_uint(output_doc, current_obj, "count", count);
     if (stat->getErrorCode() == 0)
