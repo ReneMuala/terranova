@@ -15,7 +15,7 @@
 #include "types.hpp"
 #include <sqlite3.h>
 #include <unordered_set>
-
+#include "CLI11.hpp"
 #include "mch.hpp"
 std::unordered_map<std::string, std::any> handlers;
 
@@ -1968,8 +1968,9 @@ namespace vws
                         throw std::runtime_error(fmt::format(R"(template for "{}" cannot have both html and file fields)", template_.name));
                     if (template_.html.empty() and template_.file.empty())
                         throw std::runtime_error(fmt::format(R"(template for "{}" must have an html or file specified)", template_.name));
-                    if (template_code.empty())
+                    if (template_.html.empty())
                         template_code = read_file(template_.file);
+                    else template_code = template_.html;
                     if (not template_.query.empty())
                     {
                         find_stmt_or_throw(queries, second_if_empty(template_.entity, entity.name), template_.query, [&result, &template_code, &template_](const generated_implementation&query)
@@ -2000,16 +2001,11 @@ namespace vws
     }
 }
 
-int main(int argc, char** argv) try
+void server_mode(const std::string filename, const std::string profile)
 {
     fmt::println(R"(┌┬┐┌─┐┬─┐┬─┐┌─┐┌┐┌┌─┐┬  ┬┌─┐
  │ ├┤ ├┬┘├┬┘├─┤││││ │└┐┌┘├─┤
  ┴ └─┘┴└─┴└─┴ ┴┘└┘└─┘ └┘ ┴ ┴)");
-    FLAGS_minloglevel = 0;
-    FLAGS_logtostderr = true;
-    FLAGS_stderrthreshold = 0;
-    google::InitGoogleLogging(argv[0]);
-    const std::string filename = argc > 1 ? std::string(argv[1]) : std::string("app.kdl");
     auto file = std::ifstream(filename);
     if (!file.is_open())
         LOG(FATAL) << fmt::format("Could not open {}", filename);
@@ -2112,13 +2108,59 @@ int main(int argc, char** argv) try
     init_result.second.clear();
     document.reset();
     content.clear();
-    srv::init_listeners(apps, argc > 2 ? std::string(argv[2]) : std::string());
+    srv::init_listeners(apps, profile);
     apps.clear();
     // hks::test();
     drogon::app()
         // .setServerHeaderField("logi/drogon"+drogon::getVersion())
         .run();
     svc::free_all_tracked_malloc();
+}
+
+#ifndef TERRANOVA_VERSION
+#define TERRANOVA_VERSION "<>"
+#endif
+
+int main(int argc, char** argv) try
+{
+    FLAGS_minloglevel = 0;
+    FLAGS_logtostderr = true;
+    FLAGS_stderrthreshold = 0;
+    google::InitGoogleLogging(argv[0]);
+    CLI::App app{"Terranova, a declarative language for defining REST APIs."};
+
+    app.footer("v" TERRANOVA_VERSION "\n\"I wish you all the best!\"\n- Rene Descartes Muala, 2025.");
+
+    bool version_flag = false;
+    app.add_flag("-v,--version", version_flag, "Display version");
+
+    auto* serve_cmd = app.add_subcommand("serve", "Start server");
+
+    std::string file = "app.kdl";
+    serve_cmd->add_option("-f,--file", file, "File to serve")
+        ->capture_default_str(); // Shows default in help text
+
+    std::string profile;
+    serve_cmd->add_option("-p,--profile", profile, "Name of profile to use");
+
+    serve_cmd->callback([&file, &profile]() {
+        server_mode(file, profile);
+    });
+
+    try {
+        app.parse(argc, argv);
+    } catch (const CLI::ParseError &e) {
+        return app.exit(e);
+    }
+
+    if (version_flag) {
+        std::cout << "v" TERRANOVA_VERSION << std::endl;
+        return 0;
+    }
+
+    if (app.get_subcommands().empty()) {
+        std::cout << app.help() << std::endl;
+    }
     return 0;
 }
 catch (std::exception& e)
