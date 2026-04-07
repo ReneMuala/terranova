@@ -188,6 +188,7 @@ struct template_
 {
     std::string name;
     std::string query;
+    std::string entity;
     std::string file;
     std::string html;
     std::string _comments;
@@ -196,7 +197,8 @@ struct template_
 struct views
 {
     std::vector<struct template_> template_;
-    std::vector<struct template_set> template_set;
+    // disable template_set for now
+    // std::vector<struct template_set> template_set;
     std::string _comments;
 };
 
@@ -242,6 +244,7 @@ struct generated_implementation
     std::string code;
     void* prepared_statement{};
     bool is_composed = false;
+    std::string query_name;
 };
 
 struct auth

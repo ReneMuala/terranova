@@ -15,6 +15,8 @@
 #include "types.hpp"
 #include <sqlite3.h>
 #include <unordered_set>
+
+#include "mch.hpp"
 std::unordered_map<std::string, std::any> handlers;
 
 template <typename T>
@@ -1339,7 +1341,8 @@ namespace svc
                 "const char * handler_{0}(void * handler_{0}_prepared_statement, const char* route, void* context, const char* body, int body_len){{const char * result = 0;{1}return 0;}}",
                 id, body_def) + suffix,
             .prepared_statement = prepared_stat_array,
-            .is_composed = stat.is_composed
+            .is_composed = stat.is_composed,
+            .query_name = stat.name
         };
     }
 
@@ -1467,8 +1470,8 @@ void prepared_statement_append_results_json(
             result.code.clear();
             impls.emplace_back(result);
         }
-        LOG(INFO) << "// code: ";
-        std::cerr << code << std::endl;
+        // LOG(INFO) << "// code: ";
+        // std::cerr << code << std::endl;
         // return std::move(svc1)
         return std::make_pair<std::vector<generated_implementation>, std::string>(std::move(impls), std::move(code));
     }
@@ -1817,34 +1820,9 @@ namespace srv
 
 using Callback = std::function<void (const drogon::HttpResponsePtr&)>;
 
-struct req_params
-{
-    int a;
-    int b;
-};
-
 void raise_unexpected_url_param_error(const char* where, const char* param, void* context)
 {
     error_handler(where, fmt::format("unexpected url parameter \"{}\".", param).c_str(), context);
-}
-
-bool uri_parameter_handler_1(const char* key, const char* value, void* user_data, void* context)
-{
-    req_params* params = static_cast<req_params*>(user_data);
-    if (strncmp(key, "a", 1) == 0)
-    {
-        params->a = std::stoi(value);
-    }
-    else if (strcmp(key, "b") == 0)
-    {
-        params->b = atoi(value);
-    }
-    else
-    {
-        raise_unexpected_url_param_error(__FUNCTION__, key, context);
-        return false;
-    }
-    return true;
 }
 
 bool atob(const char* str)
@@ -1883,22 +1861,6 @@ void error_handler(const char* what, const char* message, void* context)
     {
         LOG(ERROR) << what << ": " << message;
     }
-}
-
-char* handler_route_params(const char* route, void* context)
-{
-    req_params params;
-    if (get_uri_params(route, uri_parameter_handler_1, &params, context))
-    {
-        yyjson_mut_doc* doc = yyjson_mut_doc_new(NULL);
-        yyjson_mut_val* root = yyjson_mut_obj(doc);
-        yyjson_mut_doc_set_root(doc, root);
-        yyjson_mut_obj_add_int(doc, root, "result", params.a + params.b);
-        char* body = yyjson_mut_write(doc, YYJSON_WRITE_ESCAPE_UNICODE, NULL);
-        yyjson_mut_doc_free(doc);
-        return body;
-    }
-    return 0;
 }
 
 typedef char* (*handler_t)(void* prepared_statement, const char* route, void* context, const char* body, int body_len);
@@ -1957,6 +1919,87 @@ namespace docs
     unsigned char* get_docs_html();
 }
 
+namespace vws
+{
+    struct processed_template
+    {
+        std::vector<mch::node> nodes;
+        std::string handler;
+        std::string route;
+        std::string method;
+        void * prepared_statement {};
+    };
+    std::string read_file(const std::string& path) {
+        std::ifstream file(path, std::ios::binary | std::ios::ate);
+        if (not file.is_open())
+            throw std::runtime_error(fmt::format(R"(template file "{}" was not found)", path));
+        const std::streamsize size = file.tellg();
+        file.seekg(0, std::ios::beg);
+
+        std::string buffer(size, '\0');
+        if (file.read(&buffer[0], size)) {
+            return buffer;
+        }
+        return "";
+    }
+    void find_stmt_or_throw(const std::vector<generated_implementation>& queries, const std::string & entity_name, const std::string & query_name, const std::function<void(const generated_implementation&)> callback)
+    {
+        for (const auto& query : queries)
+        {
+            if (query.entity == entity_name and query.query_name == query_name)
+            {
+                callback(query);
+                return;
+            }
+        }
+        throw std::runtime_error(fmt::format("compiled query \"{}\" not found in entity \"{}\"", query_name, entity_name));
+    };
+    std::vector<processed_template> init_views(const std::vector<application>& apps, const std::vector<generated_implementation>& queries)
+    {
+        std::vector<processed_template> result;
+        for (const auto & app : apps)
+        {
+            for (const auto & entity : app.entity)
+            {
+                for (const auto & template_ : entity.views.template_)
+                {
+                    std::string template_code;
+                    if (template_.html.length() and template_.file.length())
+                        throw std::runtime_error(fmt::format(R"(template for "{}" cannot have both html and file fields)", template_.name));
+                    if (template_.html.empty() and template_.file.empty())
+                        throw std::runtime_error(fmt::format(R"(template for "{}" must have an html or file specified)", template_.name));
+                    if (template_code.empty())
+                        template_code = read_file(template_.file);
+                    if (not template_.query.empty())
+                    {
+                        find_stmt_or_throw(queries, second_if_empty(template_.entity, entity.name), template_.query, [&result, &template_code, &template_](const generated_implementation&query)
+                        {
+                            result.push_back(processed_template{
+                                .nodes = mch::parse(template_code),
+                                .handler = query.name,
+                                .route = template_.name,
+                                .method = query.method,
+                                .prepared_statement = query.prepared_statement,
+                            });
+                        });
+                    } else
+                    {
+                        result.push_back(processed_template{
+                               .nodes = mch::parse(template_code),
+                               // .handler = query.name,
+                               .route = template_.name,
+                               .method = "get",
+                               // .prepared_statement = query.prepared_statement,
+                           });
+                    }
+                    // template_.
+                }
+            }
+        }
+        return result;
+    }
+}
+
 int main(int argc, char** argv) try
 {
     fmt::println(R"(┌┬┐┌─┐┬─┐┬─┐┌─┐┌┐┌┌─┐┬  ┬┌─┐
@@ -2009,8 +2052,8 @@ int main(int argc, char** argv) try
     service_layer.push("prepared_statement_append_results_json", (void*)prepared_statement_append_results_json);
     service_layer.push("prepared_statement_finish_results_json", (void*)prepared_statement_finish_results_json);
     service_layer.compile(init_result.second);
-    LOG(INFO) << fmt::format("generated & compiled {} services successfully", init_result.first.size());
-    for (auto& impl : init_result.first)
+    LOG(INFO) << fmt::format("generated & compiled {} api services successfully", init_result.first.size());
+    for (generated_implementation& impl : init_result.first)
     {
         LOG(INFO) << fmt::format("{} {} -> {}(...)", impl.method, impl.route, impl.name);
         service_layer.push("get_request_body", (void*)get_request_body);
@@ -2028,6 +2071,41 @@ int main(int argc, char** argv) try
                     resp->setBody(_r0);
                     free((void*)_r0);
                 }
+                callback(resp);
+            }, {to_drogon_http_method(impl.method)});
+    }
+    auto processed_templates = vws::init_views(apps, init_result.first);
+    mch::helper helper = mch::yyjson::make_yyjson_helper();
+    auto ui_handlers = processed_templates.size();
+    if (ui_handlers)
+    {
+        LOG(INFO) << fmt::format("generated & compiled {} ui services successfully", ui_handlers);
+    }
+    for (vws::processed_template& impl : processed_templates)
+    {
+        LOG(INFO) << fmt::format("{} {} -> {}(...)", impl.method, impl.route, impl.handler.empty() ? "opaque_handler" : impl.handler);
+        service_layer.push("get_request_body", (void*)get_request_body);
+        handler_t handler = impl.handler.empty() ? nullptr : (handler_t)service_layer.peek(impl.handler);
+        void* prepared_stat = impl.prepared_statement;
+
+        drogon::app().registerHandler(
+            impl.route, [handler, prepared_stat, &helper, &impl](const drogon::HttpRequestPtr& req, Callback&& callback)
+            {
+                auto resp = drogon::HttpResponse::newHttpResponse();
+                resp->setContentTypeCode(drogon::ContentType::CT_TEXT_HTML);
+                if (handler)
+                {
+                    if (auto _r0 = handler(prepared_stat, ("/?" + req->getQuery()).c_str(), (void*)resp.get(),
+                                       req->getBody().data(), req->getBody().size()))
+                    {
+                        resp->setBody(_r0);
+                        free((void*)_r0);
+                    }
+                }
+                const auto input = resp->getBody();
+                yyjson_doc* doc = yyjson_read(input.data(), input.size(), 0);
+                mch::yyjson::yyjson_render_context ctx(doc);
+                resp->setBody(mch::render(impl.nodes, helper, &ctx));
                 callback(resp);
             }, {to_drogon_http_method(impl.method)});
     }
