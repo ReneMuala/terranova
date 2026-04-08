@@ -636,7 +636,7 @@ namespace db
         }
         auto handle_relationship = [&](const auto& rel)
         {
-            const std::string& it = throw_if_invalid_identifier(tolower(second_if_empty(rel.alias, rel.name)));
+            const std::string& it = throw_if_invalid_identifier(tolower(second_if_empty(rel.as, rel.name)));
             if constexpr (std::is_same_v<decltype(rel), const belongs_to&>)
             {
                 if (not fields) fields = true;
@@ -724,7 +724,7 @@ namespace db
         }
         auto handle_relationship = [&](const auto& rel)
         {
-            const std::string& it = throw_if_invalid_identifier(tolower(second_if_empty(rel.alias, rel.name)));
+            const std::string& it = throw_if_invalid_identifier(tolower(second_if_empty(rel.as, rel.name)));
             if constexpr (std::is_same_v<decltype(rel), const belongs_to&>)
             {
                 if (not fields) fields = true;
@@ -789,7 +789,7 @@ namespace db
         }
         auto handle_relationship = [&](const auto& rel)
         {
-            const std::string& it = throw_if_invalid_identifier(tolower(second_if_empty(rel.alias, rel.name)));
+            const std::string& it = throw_if_invalid_identifier(tolower(second_if_empty(rel.as, rel.name)));
             if (not fields) fields = true;
             if constexpr (std::is_same_v<decltype(rel), const belongs_to&>)
             {

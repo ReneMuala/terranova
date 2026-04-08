@@ -29,7 +29,6 @@ struct field
 struct has_many
 {
     std::string name;
-    std::string alias;
     std::string as;
     std::string on_delete = "cascade";
     std::string on_update = "no action";
@@ -40,7 +39,6 @@ struct has_many
 struct has_one
 {
     std::string name;
-    std::string alias;
     std::string as;
     std::string on_delete = "cascade";
     std::string on_update = "no action";
@@ -51,7 +49,6 @@ struct has_one
 struct belongs_to
 {
     std::string name;
-    std::string alias;
     std::string as;
     std::string on = "id";
     bool optional = false;
