@@ -17,6 +17,7 @@
 #include <unordered_set>
 #include "CLI11.hpp"
 #include "mch.hpp"
+#include <list>
 std::unordered_map<std::string, std::any> handlers;
 
 template <typename T>
