@@ -1472,8 +1472,8 @@ void prepared_statement_append_results_json(
             result.code.clear();
             impls.emplace_back(result);
         }
-        LOG(INFO) << "// code: ";
-        std::cerr << code << std::endl;
+        // LOG(INFO) << "// code: ";
+        // std::cerr << code << std::endl;
         // return std::move(svc1)
         return std::make_pair<std::vector<generated_implementation>, std::string>(std::move(impls), std::move(code));
     }
