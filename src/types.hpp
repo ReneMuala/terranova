@@ -207,13 +207,14 @@ struct entity
     std::string name;
     struct schema schema;
     bool protected_ = false;
-    struct hooks hooks;
+    // struct hooks hooks; disable hooks for now
     struct queries queries;
     struct views views;
     std::string _comments;
     unsigned long long _4x_padded_index;
 };
 
+// internal, not specified via kdl
 struct prepared_statement_metadata
 {
     enum data_provider_t
@@ -235,6 +236,7 @@ struct prepared_statement_metadata
     unsigned long long index;
 };
 
+// internal, not specified via kdl
 struct generated_implementation
 {
     std::string entity;

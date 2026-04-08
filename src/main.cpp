@@ -153,22 +153,23 @@ void get_loader()
     return handlers[struct_name];
 }
 
+static unsigned long long _global_index = 1;
+
 template <typename T>
 void load(kdl::Node& node, T& type)
 {
-    static unsigned long long global_index = 1;
     using namespace ylt::reflection;
     const auto struct_name = get_struct_name<T>();
     if (has_field<T>("_index"))
     {
         auto& _index = ylt::reflection::get<unsigned long long>(type, "_index");
-        _index = global_index++;
+        _index = _global_index++;
     }
     if (has_field<T>("_4x_padded_index"))
     {
         auto& _4x_padded_index = ylt::reflection::get<unsigned long long>(type, "_4x_padded_index");
-        _4x_padded_index = global_index;
-        global_index+=4ull;
+        _4x_padded_index = _global_index;
+        _global_index+=4ull;
     }
     if (has_field<T>("_comments"))
     {
@@ -1470,8 +1471,8 @@ void prepared_statement_append_results_json(
             result.code.clear();
             impls.emplace_back(result);
         }
-        // LOG(INFO) << "// code: ";
-        // std::cerr << code << std::endl;
+        LOG(INFO) << "// code: ";
+        std::cerr << code << std::endl;
         // return std::move(svc1)
         return std::make_pair<std::vector<generated_implementation>, std::string>(std::move(impls), std::move(code));
     }
