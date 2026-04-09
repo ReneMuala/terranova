@@ -1930,6 +1930,12 @@ void log_address(unsigned long long message)
     LOG(INFO) << "Address: " << message;
 }
 
+char * fake_strdup(const char * src)
+{
+    if (not src) return nullptr;
+    return strdup(src);
+}
+
 namespace docs
 {
     void init_docs(const std::vector<application>& apps, const std::vector<prepared_statement_metadata>& stats);
@@ -2042,7 +2048,7 @@ void server_mode(const std::string filename, const std::string profile)
     svc::cjit service_layer("generated_service_layer_1.c");
     service_layer.push("log", (void*)log_message);
     service_layer.push("log_address", (void*)log_address);
-    service_layer.push("duplicate_string", (void*)strdup);
+    service_layer.push("duplicate_string", (void*)fake_strdup);
     service_layer.push("free", (void*)free);
     service_layer.push("collect_const_char", (void*)collect_const_char);
     service_layer.push("collect_bool", (void*)collect_bool);
