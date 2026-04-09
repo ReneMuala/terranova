@@ -1261,7 +1261,7 @@ namespace svc
             struct_def += "};\n";
         }
         prepared_statement_usage += fmt::format(
-            "result = prepared_statement_get_results_json(handler_{0}_prepared_statement);", id);
+            "result = prepared_statement_get_results_json(handler_{0}_prepared_statement, context);", id);
         if (stat.is_composed)
         {
             // we don't need to use prepared statements in composed queries
@@ -1315,7 +1315,7 @@ namespace svc
                             throw std::runtime_error(fmt::format(R"(param "{}" from query "{}" was not bound in data item "{}")", target_param.name, target.name, stat.name));
                         }
                     }
-                    prepared_statement_usage.append(fmt::format(R"(prepared_statement_append_results_json(&result_obj, &result_obj_root,"{}",handler_{}_prepared_statement);)", data_item.name, target.index));
+                    prepared_statement_usage.append(fmt::format(R"(prepared_statement_append_results_json(&result_obj, &result_obj_root,"{}",handler_{}_prepared_statement, context);)", data_item.name, target.index));
                     prepared_statement_usage += "}";
                 });
             }
@@ -1394,7 +1394,8 @@ void collect_int(
     void * output_buffer,
     void * input_buffer);
 const char * prepared_statement_get_results_json(
-    void *prepared_statement);
+    void *prepared_statement,
+    void * context);
 bool prepared_statement_reset(
     void * prepared_statement);
 void bind_statement_const_char(
@@ -1456,7 +1457,8 @@ void prepared_statement_append_results_json(
     void ** result,
     void ** root_field,
     const char * section,
-    void* prepared_statement);
+    void* prepared_statement,
+    void * context);
 )";
         std::vector<generated_implementation> impls;
         // service svc1("default");
@@ -1571,6 +1573,7 @@ int to_sqlite_type(const std::string& name)
         return SQLite::BLOB;
     return SQLite::TEXT;
 }
+void error_handler(const char* what, const char* message, void* context);
 
 const char * prepared_statement_finish_results_json(void * result)
 {
@@ -1584,7 +1587,7 @@ const char * prepared_statement_finish_results_json(void * result)
     return NULL;
 }
 
-void prepared_statement_append_results_json(void ** result, void ** root_field,const char * section,void* prepared_statement)
+void prepared_statement_append_results_json(void ** result, void ** root_field,const char * section,void* prepared_statement, void * context)
 {
     SQLite::Statement* stat = (SQLite::Statement*)prepared_statement;
     yyjson_mut_val* output_root = (yyjson_mut_val*)*root_field;
@@ -1600,26 +1603,33 @@ void prepared_statement_append_results_json(void ** result, void ** root_field,c
     yyjson_mut_val* data_arr = yyjson_mut_arr(output_doc);
     unsigned long long count = 0;
     int col_count = -1;
-    while (stat->executeStep())
+    try
     {
-        if (col_count == -1)
-            col_count = stat->getColumnCount();
-        count++;
-        yyjson_mut_val* data_item = yyjson_mut_obj(output_doc);
-        for (int i = 0; i < col_count; ++i)
+        while (stat->executeStep())
         {
-            const auto& column = stat->getColumn(i);
-            const auto type = column.getType();
-            if (type == SQLite::INTEGER)
-                yyjson_mut_obj_add_int(output_doc, data_item, column.getName(), stat->getColumn(i).getInt());
-            else if (type == SQLite::FLOAT)
-                yyjson_mut_obj_add_double(output_doc, data_item, column.getName(), stat->getColumn(i).getDouble());
-            else if (type == SQLite::TEXT or type == SQLite::BLOB)
-                yyjson_mut_obj_add_strcpy(output_doc, data_item, column.getName(), stat->getColumn(i).getText());
-            else if (type == SQLite::Null)
-                yyjson_mut_obj_add_null(output_doc, data_item, column.getName());
+            if (col_count == -1)
+                col_count = stat->getColumnCount();
+            count++;
+            yyjson_mut_val* data_item = yyjson_mut_obj(output_doc);
+            for (int i = 0; i < col_count; ++i)
+            {
+                const auto& column = stat->getColumn(i);
+                const auto type = column.getType();
+                if (type == SQLite::INTEGER)
+                    yyjson_mut_obj_add_int(output_doc, data_item, column.getName(), stat->getColumn(i).getInt());
+                else if (type == SQLite::FLOAT)
+                    yyjson_mut_obj_add_double(output_doc, data_item, column.getName(), stat->getColumn(i).getDouble());
+                else if (type == SQLite::TEXT or type == SQLite::BLOB)
+                    yyjson_mut_obj_add_strcpy(output_doc, data_item, column.getName(), stat->getColumn(i).getText());
+                else if (type == SQLite::Null)
+                    yyjson_mut_obj_add_null(output_doc, data_item, column.getName());
+            }
+            yyjson_mut_arr_add_val(data_arr, data_item);
         }
-        yyjson_mut_arr_add_val(data_arr, data_item);
+    }  catch (std::exception & e)
+    {
+        error_handler(__FUNCTION__, e.what(), context);
+        return;
     }
     const auto current_obj = yyjson_mut_obj(output_doc);
     yyjson_mut_obj_add_val(output_doc, output_root, section, current_obj);
@@ -1632,7 +1642,7 @@ void prepared_statement_append_results_json(void ** result, void ** root_field,c
     yyjson_mut_obj_add_int(output_doc, current_obj, "modified", stat->getChanges());
 }
 
-const char* prepared_statement_get_results_json(void* prepared_statement)
+const char* prepared_statement_get_results_json(void* prepared_statement, void * context)
 {
     SQLite::Statement* stat = (SQLite::Statement*)prepared_statement;
     yyjson_mut_doc* output_doc = yyjson_mut_doc_new(NULL);
@@ -1641,6 +1651,8 @@ const char* prepared_statement_get_results_json(void* prepared_statement)
     yyjson_mut_val* data_arr = yyjson_mut_arr(output_doc);
     unsigned long long count = 0;
     int col_count = -1;
+    try
+    {
     while (stat->executeStep())
     {
         if (col_count == -1)
@@ -1649,7 +1661,7 @@ const char* prepared_statement_get_results_json(void* prepared_statement)
         yyjson_mut_val* data_item = yyjson_mut_obj(output_doc);
         for (int i = 0; i < col_count; ++i)
         {
-    // LOG(ERROR) << __FILE__ << "/" << __FUNCTION__ << ":" << __LINE__;
+            // LOG(ERROR) << __FILE__ << "/" << __FUNCTION__ << ":" << __LINE__;
             const auto& column = stat->getColumn(i);
             const auto type = column.getType();
             if (type == SQLite::INTEGER)
@@ -1663,6 +1675,11 @@ const char* prepared_statement_get_results_json(void* prepared_statement)
         }
         yyjson_mut_arr_add_val(data_arr, data_item);
     }
+} catch (std::exception & e)
+{
+    error_handler(__FUNCTION__, e.what(), context);
+    return nullptr;
+}
     yyjson_mut_obj_add_val(output_doc, output_root, "data", data_arr);
     yyjson_mut_obj_add_uint(output_doc, output_root, "count", count);
     if (stat->getErrorCode() == 0)
@@ -1683,8 +1700,6 @@ void bind_statement_bool(void* prepared_statement, const char* name, bool value)
         stat->bind(name, value);
     }
 }
-
-void error_handler(const char* what, const char* message, void* context);
 
 typedef bool (*request_body_handler_t)(void* userdata, void* json_object);
 
