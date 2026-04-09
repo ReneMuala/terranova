@@ -1553,10 +1553,16 @@ void collect_bool(const char* name, void* output_buffer, void* input_buffer)
             yyjson_obj_get(static_cast<yyjson_val*>(input_buffer), name));
 }
 
+char * fake_strdup(const char * src)
+{
+    if (not src) return nullptr;
+    return strdup(src);
+}
+
 void collect_const_char(const char* name, void** output_buffer, void* input_buffer)
 {
     if (name && output_buffer && input_buffer)
-        *(char**)output_buffer = strdup(yyjson_get_str(yyjson_obj_get(static_cast<yyjson_val*>(input_buffer), name)));
+        *(char**)output_buffer = fake_strdup(yyjson_get_str(yyjson_obj_get(static_cast<yyjson_val*>(input_buffer), name)));
 }
 
 typedef bool (*output_handler_t)(void* obj, void* ou, void* in);
@@ -1930,11 +1936,6 @@ void log_address(unsigned long long message)
     LOG(INFO) << "Address: " << message;
 }
 
-char * fake_strdup(const char * src)
-{
-    if (not src) return nullptr;
-    return strdup(src);
-}
 
 namespace docs
 {
