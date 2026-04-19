@@ -471,6 +471,8 @@ void load(kdl::Document& document, std::vector<application>& apps)
         if (node.name() == u8"application")
         {
             load<application>(node, apps.emplace_back());
+        } else {
+            throw std::runtime_error(fmt::format("root node type \"{}\" is not supported", node.name().c_str()));
         }
     }
 }
@@ -1017,16 +1019,39 @@ namespace db
         // }
     }
 
+    void sql_custom_session(sqlite3_context* ctx, int argc, sqlite3_value** argv)
+    {
+        // Retrieve the Database object from user_data
+        // int inputId = sqlite3_value_int(argv[0]);
+        for (int i = 0 ; i < argc ; i++)
+        {
+            auto typ = sqlite3_value_type(argv[i]);
+            std::cerr << fmt::format("{}. {}\n", i, typ);
+        }
+        //
+        // try {
+        // sqlite3_result_null(ctx);
+        sqlite3_result_text(ctx, "SECRET", -1, SQLITE_TRANSIENT);
+        // } catch (const SQLite::Exception& e) {
+        //     sqlite3_result_error(ctx, e.what(), -1);
+        // }
+    }
+
+    SQLite::Database get_database(const struct application & app){
+        return SQLite::Database(fmt::format("{}.sqlite", throw_if_invalid_identifier(app.name)),
+                                      SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
+    }
+
     std::vector<prepared_statement_metadata> init_statements(const std::vector<application>& apps)
     {
         std::vector<prepared_statement_metadata> prepared_stmts;
         for (auto& app : apps)
         {
             routes::namespace_lock lock(app.namespace_);
-            SQLite::Database database(fmt::format("{}.sqlite", throw_if_invalid_identifier(app.name)),
-                                      SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
+            SQLite::Database database = get_database(app);
             database.createFunction("cap", 1, true, nullptr, sql_custom_cap, nullptr, nullptr);
             database.createFunction("fetch", -1, true, nullptr, sql_custom_fetch, nullptr, nullptr);
+            database.createFunction("session", -1, true, nullptr, sql_custom_session, nullptr, nullptr);
             std::unordered_map<std::string, std::optional<std::reference_wrapper<const entity>>> entity_ref_map;
             for (auto& entity : app.entity)
                 entity_ref_map.emplace(throw_if_invalid_identifier(tolower(entity.name)), std::ref(entity));
@@ -2022,6 +2047,23 @@ namespace vws
             }
         }
         return result;
+    }
+}
+
+namespace ath {
+    SQLite::Statement get_login_statement(SQLite::Database & database, struct auth & auth){
+        return SQLite::Statement(database, fmt::format("SELECT * FROM {}", auth.provider));
+    }
+
+    bool init_authentication(const std::vector<application>& apps){
+        bool enabled = false;
+        for(auto & app : apps){
+            if(not app.auth.provider.empty()){
+                enabled = true;
+                auto database = db::get_database(app);
+            }
+        }
+        return enabled;
     }
 }
 

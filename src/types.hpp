@@ -251,6 +251,8 @@ struct auth
     std::string provider;
     std::string identity;
     std::string secret;
+    std::string hash;
+    bool persist;
     std::string _comments;
 };
 
