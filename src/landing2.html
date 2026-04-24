@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+    <title>Terranova — REST APIs from KDL</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+          rel="stylesheet"/>
+    <style>
+        :root {
+            --bg: #f4f4f4;
+            --surface: #fff;
+            --border: #d0d0d0;
+            --text: #1a1a1a;
+            --muted: #666;
+            --muted-2: #999;
+            --green: #006400;
+            --blue: #003580;
+            --red: #b00020;
+            --sans: 'IBM Plex Sans', sans-serif;
+            --mono: 'IBM Plex Mono', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--sans);
+            font-size: 16px;
+            line-height: 1.5;
+        }
+
+        @media (max-width: 640px) {
+            body {
+                font-size: 14px;
+            }
+        }
+
+        nav {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 0 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 48px;
+            position: sticky;
+            top: 0;
+            z-index: 200;
+        }
+
+        .nav-logo {
+            font-family: var(--mono);
+            font-weight: 700;
+            font-size: .85rem;
+            color: var(--text);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+        }
+
+        .nav-logo-mark {
+            width: 18px;
+            height: 18px;
+            background: var(--text);
+            position: relative;
+            display: inline-block;
+        }
+
+        .nav-logo-mark::after {
+            content: '';
+            position: absolute;
+            bottom: 3px;
+            right: 3px;
+            width: 8px;
+            height: 8px;
+            background: var(--bg);
+        }
+
+        .nav-links {
+            display: flex;
+            list-style: none;
+            gap: 0;
+        }
+
+        .nav-links a {
+            font-family: var(--mono);
+            font-size: .68rem;
+            font-weight: 500;
+            color: var(--muted);
+            text-decoration: none;
+            padding: .3rem .75rem;
+            border: 1px solid transparent;
+            white-space: nowrap;
+        }
+
+        .nav-links a:hover {
+            color: var(--text);
+        }
+
+        .nav-cta {
+            background: var(--text);
+            color: #fff !important;
+            border-color: var(--text) !important;
+            font-weight: 600;
+        }
+
+        .nav-cta:hover {
+            background: #333 !important;
+        }
+
+        .nav-hamburger {
+            display: none;
+            flex-direction: column;
+            gap: 4px;
+            cursor: pointer;
+            padding: .35rem;
+            border: 1px solid var(--border);
+            background: none;
+        }
+
+        .nav-hamburger span {
+            width: 18px;
+            height: 1.5px;
+            background: var(--text);
+        }
+
+        @media (max-width: 640px) {
+            .nav-links {
+                display: none;
+                flex-direction: column;
+                position: fixed;
+                top: 48px;
+                left: 0;
+                right: 0;
+                background: var(--surface);
+                border-bottom: 1px solid var(--border);
+                padding: .75rem 0;
+                z-index: 199;
+                gap: 0;
+            }
+
+            .nav-links.open {
+                display: flex;
+            }
+
+            .nav-links a {
+                padding: .6rem 1.25rem;
+                white-space: normal;
+            }
+
+            .nav-hamburger {
+                display: flex;
+            }
+        }
+
+        .hero {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 3rem 1rem 0;
+        }
+
+        .hero-inner {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .hero-eyebrow {
+            font-family: var(--mono);
+            font-size: .65rem;
+            font-weight: 600;
+            letter-spacing: .14em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+        }
+
+        .hero-eyebrow::before {
+            content: '';
+            width: 24px;
+            height: 2px;
+            background: var(--text);
+        }
+
+        .hero-headline {
+            font-family: var(--mono);
+            font-size: clamp(1.8rem, 6vw, 3.5rem);
+            font-weight: 700;
+            line-height: 1.2;
+            letter-spacing: -.02em;
+            margin-bottom: 1rem;
+        }
+
+        .hero-sub {
+            font-size: 1rem;
+            color: var(--muted);
+            margin-bottom: 2rem;
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: .75rem;
+            flex-wrap: wrap;
+            margin-bottom: 2rem;
+        }
+
+        .btn-primary, .btn-ghost {
+            font-family: var(--mono);
+            font-size: .75rem;
+            padding: .6rem 1.2rem;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: .4rem;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: var(--text);
+            color: #fff;
+            border: none;
+        }
+
+        .btn-primary:hover {
+            background: #333;
+        }
+
+        .btn-ghost {
+            background: none;
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .btn-ghost:hover {
+            border-color: var(--text);
+            background: var(--bg);
+        }
+
+        .install-cmd {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: .5rem;
+            font-family: var(--mono);
+            font-size: .7rem;
+            margin-bottom: 2rem;
+        }
+
+        .install-cmd code {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: .3rem .6rem;
+            display: inline-block;
+            width: auto;
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 640px) {
+            .install-cmd code {
+                white-space: normal;
+                word-break: break-all;
+            }
+        }
+
+        .hero-split {
+            display: grid;
+            grid-template-columns:1fr 1fr;
+            gap: 0;
+            border-top: 1px solid var(--border);
+            margin-top: 2rem;
+        }
+
+        @media (max-width: 768px) {
+            .hero-split {
+                grid-template-columns:1fr;
+            }
+        }
+
+        .hero-pane {
+            padding: 1rem;
+            border-right: 1px solid var(--border);
+        }
+
+        .hero-pane:last-child {
+            border-right: none;
+        }
+
+        @media (max-width: 768px) {
+            .hero-pane {
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }
+
+            .hero-pane:last-child {
+                border-bottom: none;
+            }
+        }
+
+        .pane-label {
+            font-family: var(--mono);
+            font-size: .6rem;
+            font-weight: 600;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: .75rem;
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            flex-wrap: wrap;
+        }
+
+        .pane-label::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #e8e8e8;
+        }
+
+        .file-tag {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: .1rem .4rem;
+        }
+
+        .code-window {
+            background: #1a1a1a;
+            font-family: var(--mono);
+            font-size: .7rem;
+            line-height: 1.6;
+            padding: 1rem;
+            color: #e8e8e8;
+            overflow-x: auto;
+        }
+
+        .code-window pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .c-comment {
+            color: #6a9955;
+        }
+
+        .c-key {
+            color: #9cdcfe;
+        }
+
+        .c-val {
+            color: #ce9178;
+        }
+
+        .ep-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .ep-row {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            padding: .4rem .5rem;
+            background: #fafafa;
+            border: 1px solid #e8e8e8;
+            flex-wrap: wrap;
+        }
+
+        @media (max-width: 480px) {
+            .ep-row {
+                flex-wrap: wrap;
+                gap: .3rem;
+            }
+        }
+
+        .ep-badge {
+            font-family: var(--mono);
+            font-size: .6rem;
+            font-weight: 700;
+            padding: .1rem .3rem;
+            min-width: 42px;
+            text-align: center;
+        }
+
+        .ep-get {
+            background: #e6ecf5;
+            color: var(--blue);
+        }
+
+        .ep-post {
+            background: #e6f0e6;
+            color: var(--green);
+        }
+
+        .ep-put {
+            background: #f0e6f5;
+            color: #4a0070;
+        }
+
+        .ep-delete {
+            background: #f5e6e9;
+            color: var(--red);
+        }
+
+        .ep-path {
+            font-family: var(--mono);
+            font-size: .7rem;
+            flex: 1;
+        }
+
+        .pane-footer {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            margin-top: .75rem;
+            font-family: var(--mono);
+            font-size: .6rem;
+            color: var(--muted-2);
+            flex-wrap: wrap;
+        }
+
+        .live-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--green);
+        }
+
+        .stats-bar {
+            background: var(--text);
+            color: #fff;
+            display: grid;
+            grid-template-columns:repeat(4, 1fr);
+            border-bottom: 1px solid #333;
+        }
+
+        @media (max-width: 768px) {
+            .stats-bar {
+                grid-template-columns:1fr 1fr;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .stats-bar {
+                grid-template-columns:1fr;
+            }
+        }
+
+        .stat-cell {
+            padding: 1rem 1rem;
+            border-right: 1px solid #333;
+        }
+
+        .stat-cell:last-child {
+            border-right: none;
+        }
+
+        @media (max-width: 768px) {
+            .stat-cell:nth-child(2) {
+                border-right: none;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .stat-cell {
+                border-right: none;
+                border-bottom: 1px solid #333;
+            }
+        }
+
+        .stat-num {
+            font-family: var(--mono);
+            font-size: 1.4rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .stat-label {
+            font-family: var(--mono);
+            font-size: .6rem;
+            color: #aaa;
+            text-transform: uppercase;
+        }
+
+        .section {
+            padding: 3rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .section-inner {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .section-label {
+            font-family: var(--mono);
+            font-size: .6rem;
+            font-weight: 600;
+            letter-spacing: .14em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: .75rem;
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+        }
+
+        .section-label::before {
+            content: '';
+            width: 14px;
+            height: 2px;
+            background: var(--muted);
+        }
+
+        .section-title {
+            font-family: var(--mono);
+            font-size: clamp(1.3rem, 4vw, 2rem);
+            font-weight: 700;
+            line-height: 1.2;
+            margin-bottom: .75rem;
+        }
+
+        .section-sub {
+            font-size: .85rem;
+            color: var(--muted);
+            max-width: 520px;
+        }
+
+        .how-grid {
+            display: grid;
+            grid-template-columns:repeat(3, 1fr);
+            gap: 0;
+            margin-top: 2rem;
+            border: 1px solid var(--border);
+        }
+
+        @media (max-width: 768px) {
+            .how-grid {
+                grid-template-columns:1fr;
+            }
+        }
+
+        .how-step {
+            padding: 1.5rem;
+            border-right: 1px solid var(--border);
+            background: var(--surface);
+        }
+
+        .how-step:last-child {
+            border-right: none;
+        }
+
+        @media (max-width: 768px) {
+            .how-step {
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }
+        }
+
+        .step-num {
+            font-family: var(--mono);
+            font-size: .6rem;
+            color: var(--muted-2);
+            margin-bottom: .75rem;
+        }
+
+        .step-icon {
+            font-family: var(--mono);
+            font-size: 1.5rem;
+            margin-bottom: .75rem;
+        }
+
+        .step-title {
+            font-family: var(--mono);
+            font-size: .9rem;
+            font-weight: 700;
+            margin-bottom: .5rem;
+        }
+
+        .step-desc {
+            font-size: .75rem;
+            color: var(--muted);
+        }
+
+        .how-arrow {
+            display: flex;
+            justify-content: center;
+            padding: 1rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-top: none;
+            font-family: var(--mono);
+            font-size: .7rem;
+            gap: .5rem;
+            flex-wrap: wrap;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns:repeat(3, 1fr);
+            gap: 0;
+            margin-top: 2rem;
+        }
+
+        @media (max-width: 768px) {
+            .features-grid {
+                grid-template-columns:1fr 1fr;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .features-grid {
+                grid-template-columns:1fr;
+            }
+        }
+
+        .feature-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            margin: -1px -1px 0 0;
+            padding: 1.2rem;
+        }
+
+        .feature-card:hover {
+            background: #fafafa;
+        }
+
+        .feature-icon {
+            font-family: var(--mono);
+            font-size: 1.1rem;
+            margin-bottom: .5rem;
+        }
+
+        .feature-title {
+            font-family: var(--mono);
+            font-size: .8rem;
+            font-weight: 700;
+            margin-bottom: .3rem;
+        }
+
+        .feature-desc {
+            font-size: .7rem;
+            color: var(--muted);
+        }
+
+        .feature-tag {
+            display: inline-block;
+            margin-top: .5rem;
+            font-family: var(--mono);
+            font-size: .55rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            padding: .1rem .4rem;
+            border: 1px solid var(--border);
+            color: var(--muted);
+        }
+
+        .compare-section {
+            background: var(--text);
+            color: #fff;
+            padding: 3rem 1rem;
+        }
+
+        .compare-inner {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .compare-section .section-label {
+            color: #666;
+        }
+
+        .compare-section .section-label::before {
+            background: #666;
+        }
+
+        .compare-section .section-title {
+            color: #fff;
+        }
+
+        .compare-grid {
+            display: grid;
+            grid-template-columns:1fr 1fr;
+            gap: 0;
+            margin-top: 2rem;
+            border: 1px solid #333;
+        }
+
+        @media (max-width: 768px) {
+            .compare-grid {
+                grid-template-columns:1fr;
+            }
+        }
+
+        .compare-col {
+            padding: 1.5rem;
+            border-right: 1px solid #333;
+        }
+
+        .compare-col:last-child {
+            border-right: none;
+        }
+
+        @media (max-width: 768px) {
+            .compare-col {
+                border-right: none;
+                border-bottom: 1px solid #333;
+            }
+        }
+
+        .compare-col-label {
+            font-family: var(--mono);
+            font-size: .6rem;
+            font-weight: 600;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+            display: flex;
+            gap: .5rem;
+        }
+
+        .label-before {
+            color: #666;
+        }
+
+        .label-after {
+            color: #4ade80;
+        }
+
+        .compare-item {
+            display: flex;
+            gap: .6rem;
+            padding: .6rem 0;
+            border-bottom: 1px solid #1f1f1f;
+            font-size: .75rem;
+        }
+
+        .compare-item:last-child {
+            border-bottom: none;
+        }
+
+        .ci-icon {
+            font-family: var(--mono);
+            font-size: .7rem;
+            flex-shrink: 0;
+        }
+
+        .ci-cross {
+            color: #555;
+        }
+
+        .ci-check {
+            color: #4ade80;
+        }
+
+        .ci-text-dim {
+            color: #888;
+        }
+
+        .ci-text-bright {
+            color: #e8e8e8;
+        }
+
+        .kdl-section {
+            padding: 3rem 1rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+        }
+
+        .kdl-inner {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .kdl-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1.5rem;
+            font-family: var(--mono);
+            font-size: .7rem;
+            display: block;
+            overflow-x: auto;
+        }
+
+        .kdl-table th, .kdl-table td {
+            padding: .5rem .6rem;
+            border-bottom: 1px solid #e8e8e8;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .kdl-table th {
+            font-size: .6rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .kw {
+            color: var(--blue);
+        }
+
+        .kdesc {
+            color: var(--muted);
+            font-family: var(--sans);
+            font-size: .7rem;
+        }
+
+        .cta-section {
+            background: var(--bg);
+            padding: 3rem 1rem;
+            text-align: center;
+        }
+
+        .cta-inner {
+            max-width: 640px;
+            margin: 0 auto;
+        }
+
+        .cta-title {
+            font-family: var(--mono);
+            font-size: clamp(1.5rem, 5vw, 2rem);
+            font-weight: 700;
+            margin-bottom: .75rem;
+        }
+
+        .cta-sub {
+            font-size: .85rem;
+            color: var(--muted);
+            margin-bottom: 2rem;
+        }
+
+        .cta-install {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: .5rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: .75rem;
+            margin-bottom: 1rem;
+        }
+
+        .cta-install code {
+            font-family: var(--mono);
+            font-size: .75rem;
+            word-break: break-all;
+            white-space: normal;
+        }
+
+        .cta-install .cta-copy {
+            align-self: flex-start;
+            font-family: var(--mono);
+            font-size: .6rem;
+            background: none;
+            border: 1px solid var(--border);
+            padding: .2rem .5rem;
+            cursor: pointer;
+        }
+
+        .cta-actions {
+            display: flex;
+            gap: .75rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        footer {
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: .5rem;
+            text-align: center;
+        }
+
+        @media (min-width: 640px) {
+            footer {
+                flex-direction: row;
+                justify-content: space-between;
+                text-align: left;
+            }
+        }
+
+        .footer-logo {
+            font-family: var(--mono);
+            font-size: .75rem;
+            font-weight: 700;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 1rem;
+            list-style: none;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .footer-links a {
+            font-family: var(--mono);
+            font-size: .65rem;
+            color: var(--muted);
+            text-decoration: none;
+        }
+
+        .footer-copy {
+            font-family: var(--mono);
+            font-size: .6rem;
+            color: var(--muted-2);
+        }
+    </style>
+</head>
+<body>
+<nav>
+    <a class="nav-logo" href="#"><span class="nav-logo-mark"></span>terranova</a>
+    <ul class="nav-links" id="navLinks">
+        <li><a href="#how">How it works</a></li>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#kdl">KDL syntax</a></li>
+        <li><a href="./static/docs/" class="nav-cta">Get started →</a></li>
+    </ul>
+    <button class="nav-hamburger" onclick="document.getElementById('navLinks').classList.toggle('open')"
+            aria-label="Menu"><span></span><span></span><span></span></button>
+</nav>
+<section class="hero">
+    <div class="hero-inner">
+        <div class="hero-eyebrow">Backend engine · (beta)</div>
+        <h1 class="hero-headline">Write KDL.<br/>Get a REST API.<br/><em style="font-style: normal;color: var(--muted-2);">Ship it.</em></h1>
+        <p class="hero-sub">Terranova reads a plain KDL schema file and immediately serves a fully functional REST API —
+            no boilerplate, no code generation, no fuss.</p>
+        <div class="hero-actions"><a href="./static/docs/" class="btn-primary">Get started →</a><a href="#how" class="btn-ghost">See
+            how it works</a></div>
+        <div class="hero-split">
+            <div class="hero-pane">
+                <div class="pane-label">Input <span class="file-tag">api.kdl</span></div>
+                <div class="code-window"><pre>application "Todo" version="0.1" {
+    entity "User" {
+        schema {
+            pk "id" type="int"
+            field "name" type="string"
+            field "email" type="string"
+            has-many "Todo" as="tasks" on-delete="cascade"
+        }
+        queries {
+            get "user_by_id" sql="SELECT * FROM user WHERE id = :id" {
+                param "id" type="int"
+            }
+        }
+        views {
+            template "/user" query="user_by_id" html="
+                &lt;h1&gt;{{data.name}}&lt;/h1&gt;
+                &lt;p&gt;Email: {{data.email}}&lt;/p&gt;
+            "
+        }
+    }
+    entity "Todo" {
+        schema {
+            pk "id" type="int"
+            field "title" type="string"
+            field "done" type="bool"
+            field "created_at" type="datetime"
+            belongs-to "User" as="owner"
+        }
+    }
+    profile "dev" default=true {
+        listen address="127.0.0.1" port=8080
+    }
+}</pre>
+                </div>
+            </div>
+            <div class="hero-pane">
+                <div class="pane-label">Generated endpoints</div>
+                <div class="ep-list">
+                    <div class="ep-row"><span class="ep-badge ep-get">GET</span><span class="ep-path">/user</span></div>
+                    <div class="ep-row"><span class="ep-badge ep-post">POST</span><span
+                            class="ep-path">/user</span></div>
+                    <div class="ep-row"><span class="ep-badge ep-put">PUT</span><span class="ep-path">/user/</span></div>
+                    <div class="ep-row"><span class="ep-badge ep-delete">DEL</span><span
+                            class="ep-path">/user/?id=<b>{id}</b></span></div>
+                    <div class="ep-row"><span class="ep-badge ep-get">GET</span><span class="ep-path">/user/user_by_id?id=<b>{id}</b></span></div>
+                    <div class="ep-row"><span class="ep-badge ep-get">GET</span><span class="ep-path">/?id=<b>{id}</b></span></div>
+                    <div class="ep-row"><span class="ep-badge ep-get">GET</span><span class="ep-path">/todo</span></div>
+                    <div class="ep-row"><span class="ep-badge ep-post">POST</span><span
+                            class="ep-path">/todo</span></div>
+                    <div class="ep-row"><span class="ep-badge ep-get">GET</span><span class="ep-path">/todo/<b>{id}</b></span></div>
+                    <div class="ep-row"><span class="ep-badge ep-put">PUT</span><span class="ep-path">/todo/</span></div>
+                    <div class="ep-row"><span class="ep-badge ep-delete">DEL</span><span
+                            class="ep-path">/todo/?id=<b>{id}</b></span></div>
+
+                </div>
+                <div class="pane-footer"><span class="live-dot"></span><span>Serving on localhost:8080 · OpenAPI spec at /docs.html</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+<div class="stats-bar">
+    <div class="stat-cell">
+        <div class="stat-num">&lt;5ms</div>
+        <div class="stat-label">Median response time</div>
+    </div>
+    <div class="stat-cell">
+        <div class="stat-num">0</div>
+        <div class="stat-label">Lines of boilerplate</div>
+    </div>
+    <div class="stat-cell">
+        <div class="stat-num">100%</div>
+        <div class="stat-label">OpenAPI compliant</div>
+    </div>
+    <div class="stat-cell">
+        <div class="stat-num">1 file</div>
+        <div class="stat-label">Your entire API schema</div>
+    </div>
+</div>
+<section class="section" id="how">
+    <div class="section-inner">
+        <div class="section-label">Process</div>
+        <h2 class="section-title">Three steps.<br/>That's all.</h2>
+        <p class="section-sub">No scaffolding commands. No generated directories to maintain. No runtime dependencies
+            beyond Terranova itself.</p>
+        <div class="how-grid">
+            <div class="how-step">
+                <div class="step-num">01 / 03</div>
+                <div class="step-icon">[kdl]</div>
+                <div class="step-title">Write a KDL schema</div>
+                <div class="step-desc">Declare your entities, fields, types, relationships, queries, and views in a
+                    single <code style="font-family:var(--mono);font-size:.7rem">api.kdl</code> file.
+                </div>
+            </div>
+            <div class="how-step">
+                <div class="step-num">02 / 03</div>
+                <div class="step-icon">[run]</div>
+                <div class="step-title">Run <code>terranova serve -f &lt;filename&gt;</code></div>
+                <div class="step-desc">Point Terranova at your KDL file. It parses, validates, creates the SQLite
+                    database, and starts serving — in under a second.
+                </div>
+            </div>
+            <div class="how-step">
+                <div class="step-num">03 / 03</div>
+                <div class="step-icon">[api]</div>
+                <div class="step-title">You have an API</div>
+                <div class="step-desc">CRUD endpoints, custom queries, HTML views, and a live OpenAPI spec are all ready
+                    to go.
+                </div>
+            </div>
+        </div>
+        <div class="how-arrow"><span>$</span> <code>terranova serve -f ./api.kdl</code></div>
+    </div>
+</section>
+<section class="section" id="features">
+    <div class="section-inner">
+        <div class="section-label">Capabilities</div>
+        <h2 class="section-title">Everything a REST API needs.<br/>Nothing it doesn't.</h2>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">[db]</div>
+                <div class="feature-title">SQLite first</div>
+                <div class="feature-desc">Zero‑configuration database. Terranova creates and manages the SQLite file
+                    automatically.
+                </div>
+                <span class="feature-tag">sqlite</span></div>
+            <div class="feature-card">
+                <div class="feature-icon">[→]</div>
+                <div class="feature-title">Relationships</div>
+                <div class="feature-desc">Declare <code>has-many</code>, <code>has-one</code>, and
+                    <code>belongs-to</code>. Terranova creates foreign keys and rules.
+                </div>
+                <span class="feature-tag">relations · intuitive schemas</span></div>
+            <div class="feature-card">
+                <div class="feature-icon">[≡]</div>
+                <div class="feature-title">Custom queries</div>
+                <div class="feature-desc">Raw SQL or composed batches. Typed parameters bound automatically from request
+                    data.
+                </div>
+                <span class="feature-tag">raw · composed · params</span></div>
+            <div class="feature-card">
+                <div class="feature-icon">[✓]</div>
+                <div class="feature-title">HTML views</div>
+                <div class="feature-desc">Bind queries to Mustache templates via inline declaration or external files.
+                </div>
+                <span class="feature-tag">templates · mustache</span></div>
+            <div class="feature-card">
+                <div class="feature-icon">[↗]</div>
+                <div class="feature-title">Live OpenAPI spec</div>
+                <div class="feature-desc">Terranova serves an interactive OpenAPI document at <code>/docs.html</code> that
+                    stays in sync with your KDL.
+                </div>
+                <span class="feature-tag">OAS 3 · yaml spec</span></div>
+            <div class="feature-card">
+                <div class="feature-icon">[⚡]</div>
+                <div class="feature-title">Blazing fast</div>
+                <div class="feature-desc">JIT‑compiled handlers (TCC), yyjson for JSON, internal bytecode Mustache
+                    engine. &lt;5ms median, idle &lt;1MB.
+                </div>
+                <span class="feature-tag">low latency · efficient</span></div>
+        </div>
+    </div>
+</section>
+<section class="compare-section">
+    <div class="compare-inner">
+        <div class="section-label">Why Terranova</div>
+        <h2 class="section-title">Less ceremony.<br/>Same result.</h2>
+        <div class="compare-grid">
+            <div class="compare-col">
+                <div class="compare-col-label label-before">[×] Traditional approach</div>
+                <div class="compare-item"><span class="ci-icon ci-cross">—</span><span class="ci-text-dim">Scaffold a framework project, install dependencies</span>
+                </div>
+                <div class="compare-item"><span class="ci-icon ci-cross">—</span><span class="ci-text-dim">Define models, migrations, and run them manually</span>
+                </div>
+                <div class="compare-item"><span class="ci-icon ci-cross">—</span><span class="ci-text-dim">Write controllers, routes, middleware for every resource</span>
+                </div>
+                <div class="compare-item"><span class="ci-icon ci-cross">—</span><span class="ci-text-dim">Add validation logic by hand in request handlers</span>
+                </div>
+                <div class="compare-item"><span class="ci-icon ci-cross">—</span><span class="ci-text-dim">Wire up auth per‑route with JWT/session libraries</span>
+                </div>
+                <div class="compare-item"><span class="ci-icon ci-cross">—</span><span class="ci-text-dim">Manually maintain OpenAPI annotations</span>
+                </div>
+                <div class="compare-item"><span class="ci-icon ci-cross">—</span><span class="ci-text-dim">Hours before your first endpoint is callable or seconds with AI, then days debugging broken code</span>
+                </div>
+            </div>
+            <div class="compare-col">
+                <div class="compare-col-label label-after">[✓] With Terranova</div>
+                <div class="compare-item"><span class="ci-icon ci-check">+</span><span class="ci-text-bright">Write one <code>api.kdl</code> file</span>
+                </div>
+                <div class="compare-item"><span class="ci-icon ci-check">+</span><span class="ci-text-bright">Schema and migrations (coming soon) derived automatically</span>
+                </div>
+                <div class="compare-item"><span class="ci-icon ci-check">+</span><span class="ci-text-bright">All CRUD endpoints generated from entity blocks</span>
+                </div>
+                <div class="compare-item"><span class="ci-icon ci-check">+</span><span class="ci-text-bright">Validation declared inline with field types</span>
+                </div>
+                <div class="compare-item"><span class="ci-icon ci-check">+</span><span class="ci-text-bright">Auth not yet supported (coming soon)</span>
+                </div>
+                <div class="compare-item"><span class="ci-icon ci-check">+</span><span class="ci-text-bright">OpenAPI spec served live, always accurate</span>
+                </div>
+                <div class="compare-item"><span class="ci-icon ci-check">+</span><span class="ci-text-bright">Callable in under 60 seconds</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+<section class="kdl-section" id="kdl">
+    <div class="kdl-inner">
+        <div class="section-label">Reference</div>
+        <h2 class="section-title">KDL syntax cheat sheet.</h2>
+        <p class="section-sub">KDL (KDL Document Language) is a small, human‑readable node document format. Terranova
+            adds a thin API‑specific vocabulary on top.</p>
+        <div style="overflow-x:auto">
+            <table class="kdl-table">
+                <thead>
+                <tr>
+                    <th>Node</th>
+                    <th>Example</th>
+                    <th>What it does</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <td><span class="kw">application</span></td>
+                    <td><code>application "MyApp" version="0.1"</code></td>
+                    <td class="kdesc">Root container. Sets name, version, license, and global namespace.</td>
+                </tr>
+                <tr>
+                    <td><span class="kw">entity</span></td>
+                    <td><code>entity "User" { schema { ... } }</code></td>
+                    <td class="kdesc">Declares a data model. Generates CRUD endpoints and a database table.</td>
+                </tr>
+                <tr>
+                    <td><span class="kw">pk</span></td>
+                    <td><code>pk "id" type="int"</code></td>
+                    <td class="kdesc">Defines the primary key column. Required for UPDATE/DELETE endpoints.</td>
+                </tr>
+                <tr>
+                    <td><span class="kw">field</span></td>
+                    <td><code>field "name" type="string" optional=true</code></td>
+                    <td class="kdesc">Defines a column. Supported types: int, float, string, bool, datetime, date, blob,
+                        file.
+                    </td>
+                </tr>
+                <tr>
+                    <td><span class="kw">has-many</span>/<span class="kw">has-one</span>/<span
+                            class="kw">belongs-to</span></td>
+                    <td><code>has-many "Todo" as="tasks" on-delete="cascade"</code></td>
+                    <td class="kdesc">Declares relationships. Creates foreign keys and nested routes.</td>
+                </tr>
+                <tr>
+                    <td><span class="kw">queries</span></td>
+                    <td><code>get "user_by_id" sql="..." { param "id" type="int" }</code></td>
+                    <td class="kdesc">Custom SQL queries (raw or composed). Each becomes an HTTP endpoint.</td>
+                </tr>
+                <tr>
+                    <td><span class="kw">views</span></td>
+                    <td><code>template "/user" query="user_by_id" html="..."</code></td>
+                    <td class="kdesc">Binds a query to a Mustache template. Renders HTML responses.</td>
+                </tr>
+                <tr>
+                    <td><span class="kw">profile</span></td>
+                    <td><code>profile "dev" default=true { listen address="127.0.0.1" port=8080 }</code></td>
+                    <td class="kdesc">Environment‑specific server configuration (address, port, TLS).</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+<section class="cta-section">
+    <div class="cta-inner">
+        <div class="section-label" style="justify-content:center">Get started</div>
+        <h2 class="cta-title">Your API is<br/>one file away.</h2>
+        <div class="cta-actions"><a href="./static/docs/" class="btn-primary">Read the docs →</a><a href="https://github.com/renemuala/terranova" class="btn-ghost">View
+            on GitHub</a></div>
+    </div>
+</section>
+<footer>
+    <div class="footer-logo">terranova</div>
+    <ul class="footer-links">
+        <li><a href="./static/docs/">Docs</a></li>
+        <li><a href="https://github.com/renemuala/terranova">GitHub</a></li>
+        <li><a href="#kdl">KDL spec</a></li>
+    </ul>
+    <div class="footer-copy">Made in Mozambique · <a href="https://github.com/renemuala">René Muala</a></div>
+</footer>
+</body>
+</html>

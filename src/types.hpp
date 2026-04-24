@@ -254,6 +254,14 @@ struct auth
     std::string _comments;
 };
 
+struct rpc_
+{
+    std::string name;
+    std::string address = "127.0.0.1";
+    int port;
+    std::string _comments;
+};
+
 struct listen
 {
     std::string address = "0.0.0.0";
@@ -268,6 +276,7 @@ struct profile
 {
     std::string name;
     bool default_ = false;
+    std::vector<struct rpc_> rpc;
     std::vector<struct listen> listen;
     std::string _comments;
 };

@@ -1,0 +1,1413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Terranova — REST APIs from KDL</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg: #f4f4f4;
+            --surface: #ffffff;
+            --surface-2: #fafafa;
+            --border: #d0d0d0;
+            --border-light: #e8e8e8;
+            --text: #1a1a1a;
+            --muted: #666;
+            --muted-2: #999;
+            --accent: #1a1a1a;
+            --green: #006400;
+            --green-dim: #e6f0e6;
+            --blue: #003580;
+            --blue-dim: #e6ecf5;
+            --red: #b00020;
+            --red-dim: #f5e6e9;
+            --sans: 'IBM Plex Sans', sans-serif;
+            --mono: 'IBM Plex Mono', monospace;
+        }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--sans);
+            font-size: 14px;
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* ── ANIMATIONS ── */
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(18px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0; }
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-12px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50%       { transform: scale(1.4); opacity: .6; }
+        }
+
+        .fade-up { opacity: 0; animation: fadeUp .55s ease forwards; }
+        .d1 { animation-delay: .05s; }
+        .d2 { animation-delay: .15s; }
+        .d3 { animation-delay: .25s; }
+        .d4 { animation-delay: .35s; }
+        .d5 { animation-delay: .45s; }
+        .d6 { animation-delay: .55s; }
+
+        /* ── NAV ── */
+        nav {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 0 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 48px;
+            position: sticky;
+            top: 0;
+            z-index: 200;
+        }
+
+        .nav-logo {
+            font-family: var(--mono);
+            font-weight: 700;
+            font-size: .85rem;
+            letter-spacing: -.01em;
+            color: var(--text);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+        }
+
+        .nav-logo-mark {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            background: var(--text);
+            position: relative;
+        }
+
+        .nav-logo-mark::after {
+            content: '';
+            position: absolute;
+            bottom: 3px;
+            right: 3px;
+            width: 8px;
+            height: 8px;
+            background: var(--bg);
+        }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            list-style: none;
+        }
+
+        .nav-links a {
+            font-family: var(--mono);
+            font-size: .68rem;
+            font-weight: 500;
+            color: var(--muted);
+            text-decoration: none;
+            padding: .3rem .75rem;
+            border: 1px solid transparent;
+            transition: color .15s, border-color .15s;
+            white-space: nowrap;
+        }
+
+        .nav-links a:hover { color: var(--text); }
+
+        .nav-cta {
+            font-family: var(--mono);
+            font-size: .68rem;
+            font-weight: 600;
+            background: var(--text);
+            color: #fff !important;
+            padding: .3rem .85rem !important;
+            border: 1px solid var(--text) !important;
+            transition: background .15s !important;
+        }
+
+        .nav-cta:hover { background: #333 !important; }
+
+        .nav-hamburger {
+            display: none;
+            flex-direction: column;
+            gap: 4px;
+            cursor: pointer;
+            padding: .35rem;
+            background: none;
+            border: 1px solid var(--border);
+        }
+
+        .nav-hamburger span { display: block; width: 18px; height: 1.5px; background: var(--text); }
+
+        /* ── HERO ── */
+        .hero {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 5rem 2rem 0;
+            overflow: hidden;
+        }
+
+        .hero-inner {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .hero-eyebrow {
+            font-family: var(--mono);
+            font-size: .65rem;
+            font-weight: 600;
+            letter-spacing: .14em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+        }
+
+        .hero-eyebrow::before {
+            content: '';
+            display: inline-block;
+            width: 24px;
+            height: 2px;
+            background: var(--text);
+        }
+
+        .hero-headline {
+            font-family: var(--mono);
+            font-size: clamp(2rem, 5vw, 3.75rem);
+            font-weight: 700;
+            line-height: 1.1;
+            letter-spacing: -.02em;
+            margin-bottom: 1.5rem;
+            max-width: 720px;
+        }
+
+        .hero-headline em {
+            font-style: normal;
+            color: var(--muted-2);
+        }
+
+        .hero-sub {
+            font-size: 1rem;
+            font-weight: 400;
+            color: var(--muted);
+            line-height: 1.7;
+            max-width: 480px;
+            margin-bottom: 2.5rem;
+        }
+
+        .hero-actions {
+            display: flex;
+            align-items: center;
+            gap: .75rem;
+            flex-wrap: wrap;
+            margin-bottom: 3rem;
+        }
+
+        .btn-primary {
+            font-family: var(--mono);
+            font-size: .75rem;
+            font-weight: 700;
+            background: var(--text);
+            color: #fff;
+            border: none;
+            padding: .65rem 1.5rem;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: .4rem;
+            transition: background .15s;
+        }
+
+        .btn-primary:hover { background: #333; }
+
+        .btn-ghost {
+            font-family: var(--mono);
+            font-size: .75rem;
+            font-weight: 500;
+            background: none;
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: .65rem 1.25rem;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: .4rem;
+            transition: border-color .15s, background .15s;
+        }
+
+        .btn-ghost:hover { border-color: var(--text); background: var(--bg); }
+
+        .install-cmd {
+            display: flex;
+            align-items: center;
+            gap: .75rem;
+            font-family: var(--mono);
+            font-size: .72rem;
+            color: var(--muted);
+            flex-wrap: wrap;
+        }
+
+        .install-cmd code {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: .3rem .65rem;
+            color: var(--text);
+            font-size: .72rem;
+            display: flex;
+            align-items: center;
+            gap: .4rem;
+        }
+
+        .install-cmd code span { color: var(--muted-2); }
+
+        /* ── HERO SPLIT ── */
+        .hero-split {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0;
+            border-top: 1px solid var(--border);
+            margin-top: 3rem;
+        }
+
+        .hero-pane {
+            padding: 1.5rem;
+            border-right: 1px solid var(--border);
+        }
+
+        .hero-pane:last-child { border-right: none; }
+
+        .pane-label {
+            font-family: var(--mono);
+            font-size: .6rem;
+            font-weight: 600;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+        }
+
+        .pane-label::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border-light);
+        }
+
+        .file-tag {
+            font-family: var(--mono);
+            font-size: .6rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: .1rem .4rem;
+            color: var(--muted);
+            margin-left: .25rem;
+        }
+
+        .code-window {
+            background: #1a1a1a;
+            font-family: var(--mono);
+            font-size: .72rem;
+            line-height: 1.75;
+            padding: 1.25rem;
+            color: #e8e8e8;
+            overflow-x: auto;
+            white-space: pre;
+        }
+
+        .c-comment  { color: #6a9955; }
+        .c-key      { color: #9cdcfe; }
+        .c-val      { color: #ce9178; }
+        .c-num      { color: #b5cea8; }
+        .c-bool     { color: #569cd6; }
+        .c-punct    { color: #888; }
+        .c-method   { color: #79b8ff; }
+        .c-path     { color: #e8e8e8; }
+        .c-status   { color: #f8c555; }
+        .c-dim      { color: #555; }
+
+        /* Endpoint list in right pane */
+        .ep-list { display: flex; flex-direction: column; gap: 2px; }
+
+        .ep-row {
+            display: flex;
+            align-items: center;
+            gap: .65rem;
+            padding: .45rem .6rem;
+            background: var(--surface-2);
+            border: 1px solid var(--border-light);
+            animation: slideIn .35s ease forwards;
+            opacity: 0;
+        }
+
+        .ep-row:nth-child(1) { animation-delay: .4s; }
+        .ep-row:nth-child(2) { animation-delay: .5s; }
+        .ep-row:nth-child(3) { animation-delay: .6s; }
+        .ep-row:nth-child(4) { animation-delay: .7s; }
+        .ep-row:nth-child(5) { animation-delay: .8s; }
+        .ep-row:nth-child(6) { animation-delay: .9s; }
+        .ep-row:nth-child(7) { animation-delay: 1.0s; }
+        .ep-row:nth-child(8) { animation-delay: 1.1s; }
+
+        .ep-badge {
+            font-family: var(--mono);
+            font-size: .58rem;
+            font-weight: 700;
+            padding: .1rem .3rem;
+            min-width: 42px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .ep-get    { background: var(--blue-dim); color: var(--blue); }
+        .ep-post   { background: var(--green-dim); color: var(--green); }
+        .ep-patch  { background: #f0e6f5; color: #4a0070; }
+        .ep-delete { background: var(--red-dim); color: var(--red); }
+
+        .ep-path {
+            font-family: var(--mono);
+            font-size: .7rem;
+            color: var(--text);
+            flex: 1;
+        }
+
+        .ep-path b {
+            font-weight: 400;
+            color: var(--muted);
+        }
+
+        .ep-ms {
+            font-family: var(--mono);
+            font-size: .6rem;
+            color: var(--muted-2);
+            flex-shrink: 0;
+        }
+
+        .pane-footer {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            margin-top: .75rem;
+            font-family: var(--mono);
+            font-size: .6rem;
+            color: var(--muted-2);
+        }
+
+        .live-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--green);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+
+        /* ── STATS BAR ── */
+        .stats-bar {
+            background: var(--text);
+            color: #fff;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            border-bottom: 1px solid #333;
+        }
+
+        .stat-cell {
+            padding: 1.25rem 1.75rem;
+            border-right: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            gap: .2rem;
+        }
+
+        .stat-cell:last-child { border-right: none; }
+
+        .stat-num {
+            font-family: var(--mono);
+            font-size: 1.6rem;
+            font-weight: 700;
+            line-height: 1;
+            letter-spacing: -.02em;
+        }
+
+        .stat-label {
+            font-family: var(--mono);
+            font-size: .62rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+        }
+
+        /* ── SECTION CHROME ── */
+        .section {
+            padding: 5rem 2rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .section-inner { max-width: 1100px; margin: 0 auto; }
+
+        .section-label {
+            font-family: var(--mono);
+            font-size: .6rem;
+            font-weight: 600;
+            letter-spacing: .14em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: .75rem;
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+        }
+
+        .section-label::before {
+            content: '';
+            display: inline-block;
+            width: 14px;
+            height: 2px;
+            background: var(--muted);
+        }
+
+        .section-title {
+            font-family: var(--mono);
+            font-size: clamp(1.4rem, 3vw, 2.25rem);
+            font-weight: 700;
+            line-height: 1.15;
+            letter-spacing: -.02em;
+            margin-bottom: 1rem;
+        }
+
+        .section-sub {
+            font-size: .88rem;
+            color: var(--muted);
+            line-height: 1.7;
+            max-width: 520px;
+        }
+
+        /* ── HOW IT WORKS ── */
+        .how-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0;
+            margin-top: 3rem;
+            border: 1px solid var(--border);
+        }
+
+        .how-step {
+            padding: 2rem;
+            border-right: 1px solid var(--border);
+            background: var(--surface);
+            position: relative;
+        }
+
+        .how-step:last-child { border-right: none; }
+
+        .step-num {
+            font-family: var(--mono);
+            font-size: .6rem;
+            font-weight: 600;
+            letter-spacing: .1em;
+            color: var(--muted-2);
+            margin-bottom: 1rem;
+        }
+
+        .step-icon {
+            font-family: var(--mono);
+            font-size: 1.75rem;
+            color: var(--text);
+            margin-bottom: 1rem;
+            line-height: 1;
+        }
+
+        .step-title {
+            font-family: var(--mono);
+            font-size: .95rem;
+            font-weight: 700;
+            margin-bottom: .5rem;
+        }
+
+        .step-desc { font-size: .78rem; color: var(--muted); line-height: 1.65; }
+
+        .step-connector {
+            position: absolute;
+            top: 2.5rem;
+            right: -1px;
+            width: 2px;
+            height: 24px;
+            background: var(--border);
+            z-index: 1;
+        }
+
+        .how-arrow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem 0;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-top: none;
+            font-family: var(--mono);
+            font-size: .72rem;
+            color: var(--muted);
+            gap: .5rem;
+        }
+
+        /* ── KDL DEMO ── */
+        .demo-section {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 5rem 2rem;
+        }
+
+        .demo-inner { max-width: 1100px; margin: 0 auto; }
+
+        .demo-grid {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 0;
+            margin-top: 3rem;
+            align-items: stretch;
+        }
+
+        .demo-pane {
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .demo-pane-header {
+            background: var(--surface-2);
+            border-bottom: 1px solid var(--border);
+            padding: .65rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            font-family: var(--mono);
+            font-size: .65rem;
+            font-weight: 600;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .demo-pane-header .dot { width: 6px; height: 6px; border-radius: 50%; }
+        .dot-kdl   { background: #9cdcfe; }
+        .dot-out   { background: var(--green); }
+
+        .demo-arrow-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 0 1.5rem;
+            gap: .5rem;
+        }
+
+        .arrow-label {
+            font-family: var(--mono);
+            font-size: .6rem;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: var(--muted-2);
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+        }
+
+        .arrow-line {
+            width: 2px;
+            flex: 1;
+            background: var(--border);
+            position: relative;
+            max-height: 120px;
+        }
+
+        .arrow-line::after {
+            content: '▼';
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: var(--muted-2);
+            font-size: .55rem;
+        }
+
+        /* ── FEATURES ── */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0;
+            margin-top: 3rem;
+        }
+
+        .feature-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            margin: -1px -1px 0 0;
+            padding: 1.75rem;
+            transition: background .15s;
+        }
+
+        .feature-card:hover { background: var(--surface-2); }
+
+        .feature-icon {
+            font-family: var(--mono);
+            font-size: 1.25rem;
+            margin-bottom: .85rem;
+            color: var(--text);
+        }
+
+        .feature-title {
+            font-family: var(--mono);
+            font-size: .82rem;
+            font-weight: 700;
+            margin-bottom: .45rem;
+        }
+
+        .feature-desc { font-size: .75rem; color: var(--muted); line-height: 1.65; }
+
+        .feature-tag {
+            display: inline-block;
+            margin-top: .75rem;
+            font-family: var(--mono);
+            font-size: .58rem;
+            font-weight: 600;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            padding: .15rem .45rem;
+            border: 1px solid var(--border);
+            color: var(--muted);
+        }
+
+        /* ── COMPARISON ── */
+        .compare-section {
+            background: var(--text);
+            color: #fff;
+            padding: 5rem 2rem;
+        }
+
+        .compare-inner { max-width: 1100px; margin: 0 auto; }
+
+        .compare-section .section-label { color: #666; }
+        .compare-section .section-label::before { background: #666; }
+        .compare-section .section-title { color: #fff; }
+
+        .compare-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0;
+            margin-top: 3rem;
+            border: 1px solid #333;
+        }
+
+        .compare-col {
+            padding: 2rem;
+            border-right: 1px solid #333;
+        }
+
+        .compare-col:last-child { border-right: none; }
+
+        .compare-col-label {
+            font-family: var(--mono);
+            font-size: .62rem;
+            font-weight: 600;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+        }
+
+        .label-before { color: #666; }
+        .label-after  { color: #4ade80; }
+
+        .compare-item {
+            display: flex;
+            align-items: flex-start;
+            gap: .65rem;
+            padding: .65rem 0;
+            border-bottom: 1px solid #1f1f1f;
+            font-size: .78rem;
+            line-height: 1.5;
+        }
+
+        .compare-item:last-child { border-bottom: none; }
+
+        .ci-icon { font-family: var(--mono); font-size: .75rem; flex-shrink: 0; margin-top: .05rem; }
+        .ci-cross { color: #555; }
+        .ci-check { color: #4ade80; }
+        .ci-text-dim { color: #555; }
+        .ci-text-bright { color: #e8e8e8; }
+
+        /* ── KDL REFERENCE ── */
+        .kdl-section {
+            padding: 5rem 2rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+        }
+
+        .kdl-inner { max-width: 1100px; margin: 0 auto; }
+
+        .kdl-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 2rem;
+            font-family: var(--mono);
+            font-size: .72rem;
+        }
+
+        .kdl-table th {
+            text-align: left;
+            font-size: .6rem;
+            font-weight: 600;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: var(--muted);
+            padding: .5rem .75rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .kdl-table td {
+            padding: .6rem .75rem;
+            border-bottom: 1px solid var(--border-light);
+            vertical-align: top;
+        }
+
+        .kdl-table tr:hover td { background: var(--surface-2); }
+        .kw { color: var(--blue); }
+        .kdesc { color: var(--muted); font-family: var(--sans); font-size: .72rem; }
+
+        /* ── CTA ── */
+        .cta-section {
+            background: var(--bg);
+            padding: 6rem 2rem;
+            text-align: center;
+        }
+
+        .cta-inner { max-width: 640px; margin: 0 auto; }
+
+        .cta-title {
+            font-family: var(--mono);
+            font-size: clamp(1.6rem, 4vw, 2.5rem);
+            font-weight: 700;
+            line-height: 1.15;
+            letter-spacing: -.02em;
+            margin-bottom: 1rem;
+        }
+
+        .cta-sub {
+            font-size: .9rem;
+            color: var(--muted);
+            line-height: 1.7;
+            margin-bottom: 2.5rem;
+        }
+
+        .cta-install {
+            display: inline-flex;
+            align-items: center;
+            gap: .75rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: .75rem 1.25rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .cta-install code {
+            font-family: var(--mono);
+            font-size: .82rem;
+            color: var(--text);
+        }
+
+        .cta-install .cta-copy {
+            font-family: var(--mono);
+            font-size: .62rem;
+            background: none;
+            border: 1px solid var(--border);
+            padding: .2rem .5rem;
+            cursor: pointer;
+            color: var(--muted);
+            transition: color .15s, border-color .15s;
+        }
+
+        .cta-install .cta-copy:hover { color: var(--text); border-color: var(--text); }
+
+        .cta-actions { display: flex; gap: .75rem; justify-content: center; flex-wrap: wrap; }
+
+        /* ── FOOTER ── */
+        footer {
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+            padding: 1.5rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: .75rem;
+        }
+
+        .footer-logo {
+            font-family: var(--mono);
+            font-size: .75rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 1.25rem;
+            list-style: none;
+        }
+
+        .footer-links a {
+            font-family: var(--mono);
+            font-size: .65rem;
+            color: var(--muted);
+            text-decoration: none;
+        }
+
+        .footer-links a:hover { color: var(--text); }
+
+        .footer-copy {
+            font-family: var(--mono);
+            font-size: .62rem;
+            color: var(--muted-2);
+        }
+
+        /* ── RESPONSIVE ── */
+        @media (max-width: 960px) {
+            .hero-split { grid-template-columns: 1fr; }
+            .hero-pane { border-right: none; border-bottom: 1px solid var(--border); }
+            .hero-pane:last-child { border-bottom: none; }
+            .stats-bar { grid-template-columns: 1fr 1fr; }
+            .stat-cell:nth-child(2) { border-right: none; }
+            .how-grid { grid-template-columns: 1fr; }
+            .how-step { border-right: none; border-bottom: 1px solid var(--border); }
+            .how-step:last-child { border-bottom: none; }
+            .demo-grid { grid-template-columns: 1fr; }
+            .demo-arrow-col { flex-direction: row; padding: 1rem 0; }
+            .arrow-label { writing-mode: horizontal-tb; transform: none; }
+            .arrow-line { width: 100%; height: 2px; max-height: unset; }
+            .arrow-line::after { content: '▶'; bottom: 50%; right: -8px; left: auto; transform: translateY(50%); }
+            .features-grid { grid-template-columns: 1fr 1fr; }
+            .compare-grid { grid-template-columns: 1fr; }
+            .compare-col { border-right: none; border-bottom: 1px solid #333; }
+            .compare-col:last-child { border-bottom: none; }
+        }
+
+        @media (max-width: 640px) {
+            nav { padding: 0 1rem; }
+            .nav-links { display: none; }
+            .nav-links.open { display: flex; flex-direction: column; position: fixed; top: 48px; left: 0; right: 0; background: var(--surface); border-bottom: 1px solid var(--border); padding: .75rem 0; z-index: 199; gap: 0; }
+            .nav-links.open a { padding: .6rem 1.25rem; }
+            .nav-hamburger { display: flex; }
+            .hero { padding: 3rem 1rem 0; }
+            .section { padding: 3.5rem 1rem; }
+            .demo-section { padding: 3.5rem 1rem; }
+            .kdl-section { padding: 3.5rem 1rem; }
+            .compare-section { padding: 3.5rem 1rem; }
+            .cta-section { padding: 4rem 1rem; }
+            .stats-bar { grid-template-columns: 1fr 1fr; }
+            .features-grid { grid-template-columns: 1fr; }
+            .hero-pane { padding: 1rem; }
+            footer { flex-direction: column; align-items: flex-start; padding: 1.25rem 1rem; }
+        }
+
+        @media (max-width: 420px) {
+            .stats-bar { grid-template-columns: 1fr; }
+            .stat-cell { border-right: none; border-bottom: 1px solid #333; }
+        }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); }
+    </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+    <a class="nav-logo" href="#">
+        <span class="nav-logo-mark"></span>
+        terranova
+    </a>
+    <ul class="nav-links" id="navLinks">
+        <li><a href="#how">How it works</a></li>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#kdl">KDL syntax</a></li>
+        <li><a href="#" class="nav-cta">Get started →</a></li>
+    </ul>
+    <button class="nav-hamburger" onclick="document.getElementById('navLinks').classList.toggle('open')" aria-label="Menu">
+        <span></span><span></span><span></span>
+    </button>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+    <div class="hero-inner">
+        <div class="hero-eyebrow fade-up d1">Backend engine · v0.0.1</div>
+        <h1 class="hero-headline fade-up d2">
+            Write KDL.<br/>
+            Get a REST API.<br/>
+            <em>Ship it.</em>
+        </h1>
+        <p class="hero-sub fade-up d3">
+            Terranova reads a plain KDL schema file and immediately serves a fully compliant REST API — no boilerplate, <abbr title="no external files are generated for your management">no code generation</abbr>, no fuss.
+        </p>
+        <div class="hero-actions fade-up d4">
+            <a href="#" class="btn-primary">Get started →</a>
+            <a href="#how" class="btn-ghost">See how it works</a>
+        </div>
+        <div class="install-cmd fade-up d5">
+            <code><span>$</span> wget https://landia.dev/terranova/terranova-win-x64.gzip</code> or
+            <code><span>$</span> wget https://landia.dev/terranova/terranova-linux-x64.gzip</code>,
+            <code><span>$</span> tar -xf ... </code>,
+            <code><span>$</span> cd ... </code>,
+            <code><span>$</span> terranova serve api.kdl</code>
+        </div>
+
+        <div class="hero-split fade-up d6">
+            <div class="hero-pane">
+                <div class="pane-label">Input <span class="file-tag">api.kdl</span></div>
+                <div class="code-window">
+<pre>application "Todo" version="0.1" {
+    auth provider="User" identity="name" secret="password"
+    entity "User" protected=true {
+        schema {
+            pk "id" type="int"
+            field "name" type="string"
+            field "email" type="string"
+            has-many "Todo" as="tasks" on-delete="cascade"
+        }
+    }
+
+    entity "Todo" {
+        schema {
+            pk "ID" type="int"
+            field "Title" type="string"
+            field "status" type="string"
+            field "created_at" type="datetime"
+            field "due" type="datetime"
+            field "is_done" type="bool"
+            field "attachment" type="file" {
+                file-options accept=".pdf" \
+                max-size=5e3 \
+                folder="task_files/"
+            }
+            belongs-to "User" as="owner"
+        }
+    }
+
+    profile "dev" default=true {
+        listen address="0.0.0.0" port=80
+    }
+    profile "prod" {
+        listen address="localhost" port=80
+        listen address="0.0.0.0" port=443 cert="example.crt" key="example.key"
+    }
+}</pre>
+                </div>
+            </div>
+
+            <div class="hero-pane">
+                <div class="pane-label">Generated endpoints</div>
+                <div class="ep-list">
+                    <div class="ep-row"><span class="ep-badge ep-get">GET</span><span class="ep-path">/products</span><span class="ep-ms">~2ms</span></div>
+                    <div class="ep-row"><span class="ep-badge ep-post">POST</span><span class="ep-path">/products</span><span class="ep-ms">~3ms</span></div>
+                    <div class="ep-row"><span class="ep-badge ep-get">GET</span><span class="ep-path">/products/<b>{id}</b></span><span class="ep-ms">~1ms</span></div>
+                    <div class="ep-row"><span class="ep-badge ep-patch">PATCH</span><span class="ep-path">/products/<b>{id}</b></span><span class="ep-ms">~3ms</span></div>
+                    <div class="ep-row"><span class="ep-badge ep-delete">DEL</span><span class="ep-path">/products/<b>{id}</b></span><span class="ep-ms">~2ms</span></div>
+                    <div class="ep-row"><span class="ep-badge ep-get">GET</span><span class="ep-path">/orders</span><span class="ep-ms">~2ms</span></div>
+                    <div class="ep-row"><span class="ep-badge ep-post">POST</span><span class="ep-path">/orders</span><span class="ep-ms">~3ms</span></div>
+                    <div class="ep-row"><span class="ep-badge ep-get">GET</span><span class="ep-path">/orders/<b>{id}</b></span><span class="ep-ms">~1ms</span></div>
+                </div>
+                <div class="pane-footer">
+                    <span class="live-dot"></span>
+                    <span>Serving on localhost:7700 · OpenAPI spec at /openapi.json</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- STATS BAR -->
+<div class="stats-bar">
+    <div class="stat-cell">
+        <div class="stat-num">&lt;5ms</div>
+        <div class="stat-label">Median response time</div>
+    </div>
+    <div class="stat-cell">
+        <div class="stat-num">0</div>
+        <div class="stat-label">Lines of boilerplate</div>
+    </div>
+    <div class="stat-cell">
+        <div class="stat-num">100%</div>
+        <div class="stat-label">OpenAPI 3.1 compliant</div>
+    </div>
+    <div class="stat-cell">
+        <div class="stat-num">1 file</div>
+        <div class="stat-label">Your entire API schema</div>
+    </div>
+</div>
+
+<!-- HOW IT WORKS -->
+<section class="section" id="how">
+    <div class="section-inner">
+        <div class="section-label">Process</div>
+        <h2 class="section-title">Three steps.<br/>That's all.</h2>
+        <p class="section-sub">No scaffolding commands. No generated directories to maintain. No runtime dependencies beyond Terranova itself.</p>
+
+        <div class="how-grid">
+            <div class="how-step">
+                <div class="step-num">01 / 03</div>
+                <div class="step-icon">[kdl]</div>
+                <div class="step-title">Write a KDL schema</div>
+                <div class="step-desc">Declare your resources, fields, types, relationships, and auth rules in a single <code style="font-family:var(--mono);font-size:.72rem">api.kdl</code> file. The syntax is terse and readable — closer to a config file than code.</div>
+            </div>
+            <div class="how-step">
+                <div class="step-num">02 / 03</div>
+                <div class="step-icon">[run]</div>
+                <div class="step-title">Run <code style="font-family:var(--mono);font-size:.9rem">terranova serve</code></div>
+                <div class="step-desc">Point Terranova at your KDL file. It parses the schema, validates it, connects to your database, and starts serving — in under a second.</div>
+            </div>
+            <div class="how-step">
+                <div class="step-num">03 / 03</div>
+                <div class="step-icon">[api]</div>
+                <div class="step-title">You have an API</div>
+                <div class="step-desc">CRUD endpoints, pagination, filtering, auth middleware, validation, and a live OpenAPI spec are all ready to go. No further configuration required.</div>
+            </div>
+        </div>
+
+        <div class="how-arrow">
+            <span style="font-family:var(--mono);font-size:.75rem">$</span>
+            <code style="font-family:var(--mono);font-size:.75rem;color:var(--text)">terranova serve ./api.kdl --port 8080 --db postgres://localhost/mydb</code>
+        </div>
+    </div>
+</section>
+
+<!-- KDL DEMO (deep dive) -->
+<section class="demo-section" id="demo">
+    <div class="demo-inner">
+        <div class="section-label">In depth</div>
+        <h2 class="section-title">KDL in.<br/>REST out.</h2>
+        <p class="section-sub">One resource block becomes a full suite of endpoints with proper HTTP semantics, status codes, and response shapes — automatically.</p>
+
+        <div class="demo-grid">
+            <div class="demo-pane">
+                <div class="demo-pane-header">
+                    <span class="dot dot-kdl"></span>
+                    api.kdl
+                </div>
+                <div class="code-window" style="min-height:340px">
+                    <span class="c-key">resource</span> <span class="c-val">"articles"</span> {
+
+                    <span class="c-comment">// field name, type, constraints</span>
+                    <span class="c-key">fields</span> {
+                    <span class="c-key">id</span>         <span class="c-val">"uuid"</span>      <span class="c-key">pk</span>=<span class="c-bool">true</span>
+                    <span class="c-key">title</span>      <span class="c-val">"string"</span>    <span class="c-key">required</span>=<span class="c-bool">true</span>  <span class="c-key">max</span>=<span class="c-num">120</span>
+                    <span class="c-key">body</span>       <span class="c-val">"text"</span>
+                    <span class="c-key">author_id</span>  <span class="c-val">"uuid"</span>      <span class="c-key">ref</span>=<span class="c-val">"users"</span>
+                    <span class="c-key">published</span>  <span class="c-val">"bool"</span>      <span class="c-key">default</span>=<span class="c-bool">false</span>
+                    <span class="c-key">created_at</span> <span class="c-val">"datetime"</span>  <span class="c-key">auto</span>=<span class="c-val">"insert"</span>
+                    }
+
+                    <span class="c-comment">// authentication strategy</span>
+                    <span class="c-key">auth</span> <span class="c-val">"bearer"</span> {
+                    <span class="c-key">read</span>  <span class="c-bool">public</span>
+                    <span class="c-key">write</span> <span class="c-val">"owner"</span>
+                    }
+
+                    <span class="c-comment">// query options</span>
+                    <span class="c-key">filter</span>  <span class="c-val">"published"</span> <span class="c-val">"author_id"</span>
+                    <span class="c-key">sort</span>    <span class="c-val">"created_at"</span>
+                    <span class="c-key">pagination</span> <span class="c-key">limit</span>=<span class="c-num">25</span> <span class="c-key">max</span>=<span class="c-num">100</span>
+                    }</div>
+            </div>
+
+            <div class="demo-arrow-col">
+                <div class="arrow-label">terranova</div>
+                <div class="arrow-line"></div>
+            </div>
+
+            <div class="demo-pane">
+                <div class="demo-pane-header">
+                    <span class="dot dot-out"></span>
+                    Generated endpoints
+                </div>
+                <div style="padding:.75rem;display:flex;flex-direction:column;gap:1px;background:var(--border)">
+
+                    <div style="background:var(--surface);padding:.65rem .85rem;">
+                        <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.35rem">
+                            <span class="ep-badge ep-get" style="font-size:.6rem">GET</span>
+                            <code style="font-family:var(--mono);font-size:.72rem">/articles</code>
+                            <span style="margin-left:auto;font-family:var(--mono);font-size:.58rem;color:var(--muted-2)">public</span>
+                        </div>
+                        <div style="font-size:.68rem;color:var(--muted)">Paginated list. Supports <code style="font-family:var(--mono)">?published=</code> and <code style="font-family:var(--mono)">?author_id=</code> filters, <code style="font-family:var(--mono)">?sort=created_at</code>.</div>
+                    </div>
+
+                    <div style="background:var(--surface);padding:.65rem .85rem;">
+                        <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.35rem">
+                            <span class="ep-badge ep-post" style="font-size:.6rem">POST</span>
+                            <code style="font-family:var(--mono);font-size:.72rem">/articles</code>
+                            <span style="margin-left:auto;font-family:var(--mono);font-size:.58rem;color:var(--muted-2)">bearer</span>
+                        </div>
+                        <div style="font-size:.68rem;color:var(--muted)">Creates a record. Validates required fields, max-length on <code style="font-family:var(--mono)">title</code>, sets <code style="font-family:var(--mono)">created_at</code> automatically.</div>
+                    </div>
+
+                    <div style="background:var(--surface);padding:.65rem .85rem;">
+                        <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.35rem">
+                            <span class="ep-badge ep-get" style="font-size:.6rem">GET</span>
+                            <code style="font-family:var(--mono);font-size:.72rem">/articles/<b style="font-weight:400;color:var(--muted)">{id}</b></code>
+                            <span style="margin-left:auto;font-family:var(--mono);font-size:.58rem;color:var(--muted-2)">public</span>
+                        </div>
+                        <div style="font-size:.68rem;color:var(--muted)">Fetch by UUID. Returns 404 if not found.</div>
+                    </div>
+
+                    <div style="background:var(--surface);padding:.65rem .85rem;">
+                        <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.35rem">
+                            <span class="ep-badge ep-patch" style="font-size:.6rem">PATCH</span>
+                            <code style="font-family:var(--mono);font-size:.72rem">/articles/<b style="font-weight:400;color:var(--muted)">{id}</b></code>
+                            <span style="margin-left:auto;font-family:var(--mono);font-size:.58rem;color:var(--muted-2)">owner</span>
+                        </div>
+                        <div style="font-size:.68rem;color:var(--muted)">Partial update. Auth checks that token subject matches <code style="font-family:var(--mono)">author_id</code>. Returns 403 otherwise.</div>
+                    </div>
+
+                    <div style="background:var(--surface);padding:.65rem .85rem;">
+                        <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.35rem">
+                            <span class="ep-badge ep-delete" style="font-size:.6rem">DEL</span>
+                            <code style="font-family:var(--mono);font-size:.72rem">/articles/<b style="font-weight:400;color:var(--muted)">{id}</b></code>
+                            <span style="margin-left:auto;font-family:var(--mono);font-size:.58rem;color:var(--muted-2)">owner</span>
+                        </div>
+                        <div style="font-size:.68rem;color:var(--muted)">Hard delete. Returns 204 No Content on success.</div>
+                    </div>
+
+                    <div style="background:var(--surface);padding:.5rem .85rem;display:flex;align-items:center;gap:.5rem">
+                        <span class="live-dot"></span>
+                        <span style="font-family:var(--mono);font-size:.62rem;color:var(--muted)">OpenAPI spec → <code style="font-size:.62rem">/openapi.json</code></span>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- FEATURES -->
+<section class="section" id="features">
+    <div class="section-inner">
+        <div class="section-label">Capabilities</div>
+        <h2 class="section-title">Everything a REST API needs.<br/>Nothing it doesn't.</h2>
+        <div class="features-grid">
+
+            <div class="feature-card">
+                <div class="feature-icon">[db]</div>
+                <div class="feature-title">Multi-database</div>
+                <div class="feature-desc">Connect to PostgreSQL, MySQL, or SQLite with a single connection string. Schema migrations are applied automatically on startup.</div>
+                <span class="feature-tag">postgres · mysql · sqlite</span>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">[auth]</div>
+                <div class="feature-title">Built-in auth</div>
+                <div class="feature-desc">Bearer token, API key, or public — per-resource and per-method. Owner-scoped write guards check claims against record fields without extra code.</div>
+                <span class="feature-tag">bearer · apikey · public</span>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">[→]</div>
+                <div class="feature-title">Relations & joins</div>
+                <div class="feature-desc">Declare foreign keys in KDL with <code style="font-family:var(--mono);font-size:.72rem">ref=</code>. Terranova enforces referential integrity and can inline related records on GET requests.</div>
+                <span class="feature-tag">belongs-to · has-many</span>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">[≡]</div>
+                <div class="feature-title">Filtering & sorting</div>
+                <div class="feature-desc">Expose query parameters automatically. Declare which fields are filterable and sortable — Terranova validates inputs and constructs safe parameterized queries.</div>
+                <span class="feature-tag">query · filter · sort</span>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">[✓]</div>
+                <div class="feature-title">Validation</div>
+                <div class="feature-desc">Type coercion, required checks, min/max, regex patterns, and enum membership — all declared in KDL, enforced on every write, returned as structured error bodies.</div>
+                <span class="feature-tag">required · min · max · enum</span>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">[↗]</div>
+                <div class="feature-title">Live OpenAPI spec</div>
+                <div class="feature-desc">Terranova generates and serves a real-time OpenAPI 3.1 spec at <code style="font-family:var(--mono);font-size:.72rem">/openapi.json</code> that stays in sync with your KDL as you edit it.</div>
+                <span class="feature-tag">OAS 3.1 · live reload</span>
+            </div>
+
+        </div>
+    </div>
+</section>
+
+<!-- COMPARISON -->
+<section class="compare-section">
+    <div class="compare-inner">
+        <div class="section-label">Why Terranova</div>
+        <h2 class="section-title">Less ceremony.<br/>Same result.</h2>
+        <div class="compare-grid">
+            <div class="compare-col">
+                <div class="compare-col-label label-before">[×] Traditional approach</div>
+                <div class="compare-item"><span class="ci-icon ci-cross">—</span><span class="ci-text-dim">Scaffold a framework project, install dependencies</span></div>
+                <div class="compare-item"><span class="ci-icon ci-cross">—</span><span class="ci-text-dim">Define models, migrations, and run them manually</span></div>
+                <div class="compare-item"><span class="ci-icon ci-cross">—</span><span class="ci-text-dim">Write controllers, routes, middleware for every resource</span></div>
+                <div class="compare-item"><span class="ci-icon ci-cross">—</span><span class="ci-text-dim">Add validation logic by hand in request handlers</span></div>
+                <div class="compare-item"><span class="ci-icon ci-cross">—</span><span class="ci-text-dim">Wire up auth per-route with JWT/session libraries</span></div>
+                <div class="compare-item"><span class="ci-icon ci-cross">—</span><span class="ci-text-dim">Manually maintain OpenAPI annotations or generate them</span></div>
+                <div class="compare-item"><span class="ci-icon ci-cross">—</span><span class="ci-text-dim">Days before your first endpoint is callable</span></div>
+            </div>
+            <div class="compare-col">
+                <div class="compare-col-label label-after">[✓] With Terranova</div>
+                <div class="compare-item"><span class="ci-icon ci-check">+</span><span class="ci-text-bright">Write one <code style="font-family:var(--mono);font-size:.72rem">api.kdl</code> file</span></div>
+                <div class="compare-item"><span class="ci-icon ci-check">+</span><span class="ci-text-bright">Schema and migrations are derived automatically</span></div>
+                <div class="compare-item"><span class="ci-icon ci-check">+</span><span class="ci-text-bright">All CRUD endpoints generated from resource blocks</span></div>
+                <div class="compare-item"><span class="ci-icon ci-check">+</span><span class="ci-text-bright">Validation declared inline with field types</span></div>
+                <div class="compare-item"><span class="ci-icon ci-check">+</span><span class="ci-text-bright">Auth strategy set per-resource in two words</span></div>
+                <div class="compare-item"><span class="ci-icon ci-check">+</span><span class="ci-text-bright">OpenAPI spec served live, always accurate</span></div>
+                <div class="compare-item"><span class="ci-icon ci-check">+</span><span class="ci-text-bright">Callable in under 60 seconds</span></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- KDL SYNTAX REFERENCE -->
+<section class="kdl-section" id="kdl">
+    <div class="kdl-inner">
+        <div class="section-label">Reference</div>
+        <h2 class="section-title">KDL syntax cheat sheet.</h2>
+        <p class="section-sub">KDL (KDL Document Language) is a small, human-readable node document format. Terranova adds a thin API-specific vocabulary on top.</p>
+
+        <table class="kdl-table">
+            <thead>
+            <tr>
+                <th>Node</th>
+                <th>Example</th>
+                <th>What it does</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr>
+                <td><span class="kw">resource</span></td>
+                <td><code style="font-family:var(--mono)">resource "users" { … }</code></td>
+                <td class="kdesc">Declares a top-level REST resource. Generates a full set of CRUD endpoints under <code style="font-family:var(--mono);font-size:.7rem">/users</code>.</td>
+            </tr>
+            <tr>
+                <td><span class="kw">fields</span></td>
+                <td><code style="font-family:var(--mono)">fields { name "string" required=true }</code></td>
+                <td class="kdesc">Block of field declarations. Each line is <code style="font-family:var(--mono);font-size:.7rem">name type [attributes…]</code>.</td>
+            </tr>
+            <tr>
+                <td><span class="kw">pk=true</span></td>
+                <td><code style="font-family:var(--mono)">id "uuid" pk=true</code></td>
+                <td class="kdesc">Marks a field as the primary key. Used in <code style="font-family:var(--mono);font-size:.7rem">/{resource}/{id}</code> routes.</td>
+            </tr>
+            <tr>
+                <td><span class="kw">ref=</span></td>
+                <td><code style="font-family:var(--mono)">user_id "uuid" ref="users"</code></td>
+                <td class="kdesc">Foreign key reference. Enforces referential integrity and enables relational queries.</td>
+            </tr>
+            <tr>
+                <td><span class="kw">auto=</span></td>
+                <td><code style="font-family:var(--mono)">created_at "datetime" auto="insert"</code></td>
+                <td class="kdesc">Auto-populates the field on insert or update. Values: <code style="font-family:var(--mono);font-size:.7rem">"insert"</code>, <code style="font-family:var(--mono);font-size:.7rem">"update"</code>, <code style="font-family:var(--mono);font-size:.7rem">"always"</code>.</td>
+            </tr>
+            <tr>
+                <td><span class="kw">auth</span></td>
+                <td><code style="font-family:var(--mono)">auth "bearer" { write "owner" }</code></td>
+                <td class="kdesc">Sets the authentication strategy. Optionally configure read/write scopes separately.</td>
+            </tr>
+            <tr>
+                <td><span class="kw">filter</span></td>
+                <td><code style="font-family:var(--mono)">filter "status" "created_at"</code></td>
+                <td class="kdesc">Exposes listed fields as query params on the list endpoint.</td>
+            </tr>
+            <tr>
+                <td><span class="kw">sort</span></td>
+                <td><code style="font-family:var(--mono)">sort "created_at" "name"</code></td>
+                <td class="kdesc">Fields available for <code style="font-family:var(--mono);font-size:.7rem">?sort=</code> ordering on the list endpoint.</td>
+            </tr>
+            <tr>
+                <td><span class="kw">pagination</span></td>
+                <td><code style="font-family:var(--mono)">pagination limit=20 max=100</code></td>
+                <td class="kdesc">Enables cursor/offset pagination. Sets default page size and maximum cap.</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+    <div class="cta-inner">
+        <div class="section-label" style="justify-content:center">Get started</div>
+        <h2 class="cta-title">Your API is<br/>one file away.</h2>
+        <p class="cta-sub">Install Terranova, write a KDL file, and have a running REST API in under a minute. No account required.</p>
+
+        <div style="display:flex;flex-direction:column;align-items:center;gap:.75rem;margin-bottom:2rem">
+            <div class="cta-install">
+                <code>cargo install terranova</code>
+                <button class="cta-copy" onclick="copyInstall(this)">copy</button>
+            </div>
+            <div class="cta-install">
+                <code>terranova serve api.kdl</code>
+                <button class="cta-copy" onclick="copyInstall(this)">copy</button>
+            </div>
+        </div>
+
+        <div class="cta-actions">
+            <a href="#" class="btn-primary">Read the docs →</a>
+            <a href="#" class="btn-ghost">View on GitHub</a>
+        </div>
+    </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+    <div class="footer-logo">terranova</div>
+    <ul class="footer-links">
+        <li><a href="#">Docs</a></li>
+        <li><a href="#">GitHub</a></li>
+        <li><a href="#">Changelog</a></li>
+        <li><a href="#">KDL spec</a></li>
+    </ul>
+    <div class="footer-copy">Made in Mozambique · René Muala</div>
+</footer>
+
+<script>
+    function copyInstall(btn) {
+        const code = btn.previousElementSibling.textContent.trim();
+        navigator.clipboard.writeText(code).then(() => {
+            const orig = btn.textContent;
+            btn.textContent = 'copied!';
+            setTimeout(() => btn.textContent = orig, 1500);
+        });
+    }
+</script>
+</body>
+</html>

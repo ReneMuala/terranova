@@ -1,12 +1,17 @@
 add_rules("mode.debug", "mode.release")
-add_requires("fmt", "drogon", "glog", "iguana", "sqlitecpp", "yyjson", "uriparser")
+add_requires("fmt", "drogon", "glog", "iguana", "sqlitecpp", "yyjson", "uriparser"
+-- ,"rpclib"
+)
 
 target("terranova")
+set_runargs("serve")
 set_kind("binary")
 add_defines("KDL_STATIC_LIB", "KDLPP_STATIC_LIB",[[TERRANOVA_VERSION="0.2.1 Pontagea/Beira"]])
 set_languages("c++23")
 add_includedirs("deps/ckdl/include", "deps/ckdl/bindings/cpp/include")
-add_packages("fmt", "drogon", "glog", "iguana", "sqlitecpp", "yyjson", "uriparser")
+add_packages("fmt", "drogon", "glog", "iguana", "sqlitecpp", "yyjson", "uriparser"
+-- ,"rpclib"
+)
 add_files("src/*.cpp", "deps/ckdl/src/*.c",
     "deps/ckdl/bindings/cpp/src/*.cpp")
 add_files("src/docs.html",{rule = "utils.bin2c"})
