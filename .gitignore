@@ -15,3 +15,5 @@ CMakeLists.txt
 /terranova-v0.1-windows-x86_64.zip
 /compile_commands.json
 /CMakeLists.txt
+.cache
+.vscode
