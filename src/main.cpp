@@ -472,7 +472,7 @@ void load(kdl::Document& document, std::vector<application>& apps)
         {
             load<application>(node, apps.emplace_back());
         } else {
-            throw std::runtime_error(fmt::format("root node type \"{}\" is not supported", node.name().c_str()));
+            throw std::runtime_error(fmt::format("root node type \"{}\" is not supported", (char*)node.name().c_str()));
         }
     }
 }
