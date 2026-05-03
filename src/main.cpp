@@ -446,6 +446,13 @@ void load(kdl::Node& node, T& type)
                     load<bind>(child, it.emplace_back());
                     success = true;
                 }
+            } else if constexpr (std::is_same_v<decltype(it), std::vector<role>&>)
+            {
+                if (child_name == "role")
+                {
+                    load<role>(child, it.emplace_back());
+                    success = true;
+                }
             } /*else if constexpr (std::is_same_v<decltype(it), std::vector<struct rpc_>&>)
             {
                 if (child_name == "rpc")

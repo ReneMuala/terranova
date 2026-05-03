@@ -207,6 +207,7 @@ struct entity
     // struct hooks hooks; disable hooks for now
     struct queries queries;
     struct views views;
+    std::string access;
     std::string _comments;
     unsigned long long _4x_padded_index;
 };
@@ -246,6 +247,14 @@ struct generated_implementation
     std::string query_name;
 };
 
+struct role {
+    std::string name;
+    std::string from;
+    std::string check;
+    std::string value;
+    std::string sql;
+};
+
 struct auth
 {
     std::string provider;
@@ -254,6 +263,7 @@ struct auth
     std::string hash;
     bool persist;
     std::string _comments;
+    std::vector<struct role> role;
 };
 
 struct rpc_
