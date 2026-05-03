@@ -18,6 +18,7 @@
 #include "CLI11.hpp"
 #include "mch.hpp"
 #include <list>
+// #include <rpc/client.h>
 std::unordered_map<std::string, std::any> handlers;
 
 template <typename T>
@@ -445,7 +446,14 @@ void load(kdl::Node& node, T& type)
                     load<bind>(child, it.emplace_back());
                     success = true;
                 }
-            }
+            } /*else if constexpr (std::is_same_v<decltype(it), std::vector<struct rpc_>&>)
+            {
+                if (child_name == "rpc")
+                {
+                    load<struct rpc_>(child, it.emplace_back());
+                    success = true;
+                }
+            }*/
         });
         if (not success)
             throw std::runtime_error(
@@ -2212,6 +2220,18 @@ int main(int argc, char** argv) try
     serve_cmd->callback([&file, &profile]() {
         server_mode(file, profile);
     });
+
+    /*
+    auto* msgpack_cmd = app.add_subcommand("msgpack", "Test msgpack");
+
+    msgpack_cmd->callback([]() {
+        // Creating a client that connects to the localhost on port 8080
+        rpc::client client("127.0.0.1", 8080);
+        // Calling a function with paramters and converting the result to int
+        auto result = client.call("add").as<int>();
+        std::cout << "The result is: " << result << std::endl;
+    });
+    */
 
     try {
         app.parse(argc, argv);
