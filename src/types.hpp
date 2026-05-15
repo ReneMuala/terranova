@@ -187,7 +187,8 @@ struct template_
     std::string query;
     std::string entity;
     std::string file;
-    std::string html;
+    std::string mime = "text/html";
+    std::string inline_;
     std::string _comments;
 };
 

@@ -888,7 +888,6 @@ void log_address(unsigned long long message)
     LOG(INFO) << "Address: " << message;
 }
 
-
 namespace docs
 {
     void init_docs(const std::vector<application>& apps, const std::vector<prepared_statement_metadata>& stats);
@@ -902,6 +901,7 @@ namespace vws
         std::vector<mch::node> nodes;
         std::string handler;
         std::string route;
+        std::string mime;
         std::string method;
         void * prepared_statement {};
     };
@@ -920,15 +920,19 @@ namespace vws
     }
     void find_stmt_or_throw(const std::vector<generated_implementation>& queries, const std::string & entity_name, const std::string & query_name, const std::function<void(const generated_implementation&)> callback)
     {
+        bool entity_found = 0;
         for (const auto& query : queries)
         {
-            if (query.entity == entity_name and query.query_name == query_name)
-            {
-                callback(query);
-                return;
+            if(query.entity == entity_name){
+                entity_found = true;
+                if (query.query_name == query_name)
+                {
+                    callback(query);
+                    return;
+                }
             }
         }
-        throw std::runtime_error(fmt::format("compiled query \"{}\" not found in entity \"{}\"", query_name, entity_name));
+        throw std::runtime_error(fmt::format("compiled query \"{}\" not found in entity \"{}\"{}", query_name, entity_name, entity_found ? "":" (inexistent entity)"));
     };
     std::vector<processed_template> init_views(const std::vector<application>& apps, const std::vector<generated_implementation>& queries)
     {
@@ -940,13 +944,13 @@ namespace vws
                 for (const auto & template_ : entity.views.template_)
                 {
                     std::string template_code;
-                    if (template_.html.length() and template_.file.length())
+                    if (template_.inline_.length() and template_.file.length())
                         throw std::runtime_error(fmt::format(R"(template for "{}" cannot have both html and file fields)", template_.name));
-                    if (template_.html.empty() and template_.file.empty())
+                    if (template_.inline_.empty() and template_.file.empty())
                         throw std::runtime_error(fmt::format(R"(template for "{}" must have an html or file specified)", template_.name));
-                    if (template_.html.empty())
+                    if (template_.inline_.empty())
                         template_code = read_file(template_.file);
-                    else template_code = template_.html;
+                    else template_code = template_.inline_;
                     if (not template_.query.empty())
                     {
                         find_stmt_or_throw(queries, misc::second_if_empty(template_.entity, entity.name), template_.query, [&result, &template_code, &template_](const generated_implementation&query)
@@ -955,6 +959,7 @@ namespace vws
                                 .nodes = mch::parse(template_code),
                                 .handler = query.name,
                                 .route = template_.name,
+                                .mime = template_.mime,
                                 .method = query.method,
                                 .prepared_statement = query.prepared_statement,
                             });
@@ -974,23 +979,6 @@ namespace vws
             }
         }
         return result;
-    }
-}
-
-namespace ath {
-    SQLite::Statement get_login_statement(SQLite::Database & database, struct auth & auth){
-        return SQLite::Statement(database, fmt::format("SELECT * FROM {}", auth.provider));
-    }
-
-    bool init_authentication(const std::vector<application>& apps){
-        bool enabled = false;
-        for(auto & app : apps){
-            if(not app.auth.provider.empty()){
-                enabled = true;
-                auto database = db::get_database(app);
-            }
-        }
-        return enabled;
     }
 }
 
@@ -1014,6 +1002,7 @@ void server_mode(const std::string filename, const std::string profile)
     load(document.value(), apps);
     std::vector<prepared_statement_metadata> prepared_statements = db::init_statements(apps);
     docs::init_docs(apps, prepared_statements);
+    authentication::init_auth(apps);
     auto init_result = service::init_services(prepared_statements);
     service::cjit service_layer("generated_service_layer_1.c");
     service_layer.push("log", (void*)log_message);
@@ -1091,6 +1080,7 @@ void server_mode(const std::string filename, const std::string profile)
                         free((void*)_r0);
                     }
                 }
+                resp->setContentTypeString(impl.mime);
                 const auto input = resp->getBody();
                 yyjson_doc* doc = yyjson_read(input.data(), input.size(), 0);
                 mch::yyjson::yyjson_render_context ctx(doc);
@@ -1120,6 +1110,9 @@ int main(int argc, char** argv) try
     FLAGS_logtostderr = true;
     FLAGS_stderrthreshold = 0;
     google::InitGoogleLogging(argv[0]);
+
+
+
     CLI::App app{"Terranova, a declarative language for defining REST APIs."};
 
     app.footer("v" TERRANOVA_VERSION "\n\"I wish you all the best!\"\n- Rene Descartes Muala, 2025.");
@@ -1140,6 +1133,9 @@ int main(int argc, char** argv) try
         server_mode(file, profile);
     });
 
+    #ifdef TERRANOVA_DEBUG_MODE
+        server_mode(file, profile);
+    #endif
     /*
     auto* msgpack_cmd = app.add_subcommand("msgpack", "Test msgpack");
 
