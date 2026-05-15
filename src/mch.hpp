@@ -6,6 +6,7 @@
 #include <vector>
 #include <string>
 #include <yyjson.h>
+#include <functional>
 
 namespace mch
 {
@@ -20,6 +21,7 @@ namespace mch
         enable_escaping,
         disable_escaping,
         next,
+        continues,
     };
 
     struct node
@@ -46,6 +48,7 @@ namespace mch
         const bool_callback inversion_opener;
         const void_callback closer;
         const bool_callback nexter;
+        const bool_callback continuer;
     };
     std::string render(std::vector<struct node> const& nodes, const helper& r_helper, void* buffer = nullptr);
 
@@ -59,15 +62,15 @@ namespace mch
         struct yyjson_render_context
         {
             yyjson_val* root; // document root
-
+            size_t nexter_stack_size = 0;
             struct frame
             {
                 enum { OBJ, ARR, SCALAR } type;
-
                 yyjson_val* val; // current value
                 size_t idx; // for ARR: current element index
                 size_t len; // for ARR: total elements
                 bool fetch_instance; // breaks lookups for dotted values
+                size_t nexter_stack_size = 0;
             };
 
             std::vector<frame> stack; // context stack (top = back)

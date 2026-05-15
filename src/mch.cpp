@@ -33,6 +33,10 @@ namespace mch
                 if (not r_helper.inversion_opener(str, buffer))
                     i += size - 1;
                 break;
+            case type::continues:
+                if (not r_helper.continuer(str, buffer))
+                    i += size - 1;
+                break;
             case type::fetch:
                 r_helper.fetcher(str, buffer);
                 break;
@@ -295,7 +299,12 @@ namespace mch
                         {
                             open_section(nodes, context_stack, id, last ? mch::open_inverted : mch::fetch);
                         });
-                else if (expect("/", str, offset)) // close section
+                else if (expect("?", str, offset)){ // open inverted section
+                    const auto id = extract_id_or_dot(str, offset, open_pattern, close_pattern);
+                    if(id != "continues")
+                        throw std::runtime_error(fmt::format(R"(expected to find "{}" at offset {})", "continues", offset));
+                    open_section(nodes, context_stack, id, mch::continues);
+                } else if (expect("/", str, offset)) // close section
                     for_each_dotted_reversed(
                         open_pattern,
                         close_pattern,
@@ -410,10 +419,13 @@ namespace mch
             }
         }
 
+        
         // -------------------------------------------------------------------
-        // HTML escape (used by escaper callback)
+        // escapers
         // -------------------------------------------------------------------
-        static std::string html_escape(const std::string& s)
+
+        // text/html
+        static std::string text_html_escape(const std::string& s)
         {
             std::string out;
             out.reserve(s.size());
@@ -421,17 +433,144 @@ namespace mch
             {
                 switch (c)
                 {
-                case '&': out += "&amp;";
+                case '&':  out += "&amp;";  break;
+                case '<':  out += "&lt;";   break;
+                case '>':  out += "&gt;";   break;
+                case '"':  out += "&quot;"; break;
+                case '\'': out += "&#39;";  break;
+                default:   out += c;
+                }
+            }
+            return out;
+        }
+
+        /// TODO: add support for escaper choosing, via template mime type
+
+        // text/xml, application/xml
+        static std::string text_xml_escape(const std::string& s)
+        {
+            std::string out;
+            out.reserve(s.size());
+            for (const char c : s)
+            {
+                switch (c)
+                {
+                case '&':  out += "&amp;";  break;
+                case '<':  out += "&lt;";   break;
+                case '>':  out += "&gt;";   break;
+                case '"':  out += "&quot;"; break;
+                case '\'': out += "&apos;"; break;  // XML uses &apos; unlike HTML
+                default:   out += c;
+                }
+            }
+            return out;
+        }
+
+        // application/json
+        static std::string application_json_escape(const std::string& s)
+        {
+            std::string out;
+            out.reserve(s.size());
+            for (const unsigned char c : s)
+            {
+                switch (c)
+                {
+                case '"':  out += "\\\""; break;
+                case '\\': out += "\\\\"; break;
+                case '\n': out += "\\n";  break;
+                case '\r': out += "\\r";  break;
+                case '\t': out += "\\t";  break;
+                case '\b': out += "\\b";  break;
+                case '\f': out += "\\f";  break;
+                default:
+                    if (c < 0x20)
+                    {
+                        char seq[7];
+                        std::snprintf(seq, sizeof(seq), "\\u%04X", c);
+                        out += seq;
+                    }
+                    else out += c;
+                }
+            }
+            return out;
+        }
+
+        // text/csv
+        static std::string text_csv_escape(const std::string& s)
+        {
+            bool needs_quotes = false;
+            for (const char c : s)
+            {
+                if (c == ',' || c == '"' || c == '\n' || c == '\r')
+                {
+                    needs_quotes = true;
                     break;
-                case '<': out += "&lt;";
-                    break;
-                case '>': out += "&gt;";
-                    break;
-                case '"': out += "&quot;";
-                    break;
-                case '\'': out += "&#39;";
-                    break;
-                default: out += c;
+                }
+            }
+
+            if (!needs_quotes)
+                return s;
+
+            std::string out;
+            out.reserve(s.size() + 2);
+            out += '"';
+            for (const char c : s)
+            {
+                if (c == '"') out += "\"\"";  // double-quote escaping per RFC 4180
+                else          out += c;
+            }
+            out += '"';
+            return out;
+        }
+
+        // application/x-www-form-urlencoded
+        static std::string application_x_www_form_urlencoded_escape(const std::string& s)
+        {
+            std::string out;
+            out.reserve(s.size() * 3);
+            for (const unsigned char c : s)
+            {
+                if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~')
+                    out += static_cast<char>(c);
+                else if (c == ' ')
+                    out += '+';
+                else
+                {
+                    char seq[4];
+                    std::snprintf(seq, sizeof(seq), "%%%02X", c);
+                    out += seq;
+                }
+            }
+            return out;
+        }
+
+        // text/javascript (safe for inline <script> blocks inside HTML)
+        static std::string text_javascript_escape(const std::string& s)
+        {
+            std::string out;
+            out.reserve(s.size());
+            for (const unsigned char c : s)
+            {
+                switch (c)
+                {
+                case '"':  out += "\\\"";   break;
+                case '\'': out += "\\'";    break;
+                case '\\': out += "\\\\";   break;
+                case '\n': out += "\\n";    break;
+                case '\r': out += "\\r";    break;
+                case '\t': out += "\\t";    break;
+                // prevent </script> injection and HTML entity confusion
+                case '<':  out += "\\u003C"; break;
+                case '>':  out += "\\u003E"; break;
+                case '&':  out += "\\u0026"; break;
+                default:
+                    if (c < 0x20)
+                    {
+                        char seq[7];
+                        std::snprintf(seq, sizeof(seq), "\\u%04X", c);
+                        out += seq;
+                    }
+                    else out += c;
                 }
             }
             return out;
@@ -473,7 +612,7 @@ namespace mch
 
         static std::string escaper_cb(const std::string& raw, void*)
         {
-            return html_escape(raw);
+            return text_html_escape(raw);
         }
 
         static void fetcher_cb(const std::string& key, void* buf)
@@ -511,7 +650,15 @@ namespace mch
         static void closer_cb(const std::string&, void* buf)
         {
             auto* ctx = static_cast<yyjson_render_context*>(buf);
-            if (!ctx->stack.empty()) ctx->stack.pop_back();
+            if (!ctx->stack.empty()) {
+                auto& top = ctx->stack.back();
+                if (top.type == yyjson_render_context::frame::ARR and top.nexter_stack_size){
+                } else {
+                    ctx->stack.pop_back();
+                }
+            } else if(ctx->nexter_stack_size > 0){
+                ctx->nexter_stack_size--;
+            }
         }
 
         static bool nexter_cb(const std::string&, void* buf)
@@ -527,6 +674,21 @@ namespace mch
             return false;
         }
 
+        static bool continuer_cb(const std::string&, void* buf)
+        {
+            auto* ctx = static_cast<yyjson_render_context*>(buf);
+            if (ctx->stack.empty()) return false;
+            auto& top = ctx->stack.back();
+            if (top.type != yyjson_render_context::frame::ARR) return false;
+            // ++top.idx;
+            if (top.idx+1 < top.len) {
+                top.nexter_stack_size++;
+                return true;
+            }
+            // ctx->stack.pop_back();
+            return false;
+        }
+
         // -------------------------------------------------------------------
         // Helper builder – returns a fully populated helper struct
         // -------------------------------------------------------------------
@@ -539,7 +701,8 @@ namespace mch
                 /* .list_opener      = */ list_opener_cb,
                 /* .inversion_opener = */ inversion_opener_cb,
                 /* .closer           = */ closer_cb,
-                /* .nexter           = */ nexter_cb
+                /* .nexter           = */ nexter_cb,
+                /* .has_nexter           = */ continuer_cb
             };
         }
     }
