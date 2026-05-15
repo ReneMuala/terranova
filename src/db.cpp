@@ -218,7 +218,7 @@ namespace db
                                 misc::throw_if_invalid_identifier(misc::tolower(entity.name)));
         LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
         return prepared_statement_metadata{
-            .name = "select",
+            .name = "get",
             .entity = entity.name,
             .route = misc::to_route(entity.name),
             .method = "get",
@@ -294,7 +294,7 @@ namespace db
         stmt = fmt::format("{} ({}) VALUES({});", stmt, values, value_fields);
         LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
         return {
-            .name = "insert",
+            .name = "post",
             .entity = entity.name,
             .route = misc::to_route(entity.name),
             .method = "post",
@@ -364,7 +364,7 @@ namespace db
                                        misc::throw_if_invalid_identifier(misc::tolower(entity.name)), sets, pk_name);
         LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
         return {
-            .name = "update",
+            .name = "put",
             .entity = entity.name,
             .route = misc::to_route(entity.name),
             .method = "put",
