@@ -1,3 +1,4 @@
+add_rules("plugin.compile_commands.autoupdate")
 add_rules("mode.debug", "mode.release")
 add_requires("fmt", "drogon", "glog", "iguana", "sqlitecpp", "yyjson", "uriparser"
 -- ,"rpclib"
@@ -6,7 +7,7 @@ add_requires("fmt", "drogon", "glog", "iguana", "sqlitecpp", "yyjson", "uriparse
 target("terranova")
 set_runargs("serve")
 set_kind("binary")
-add_defines("KDL_STATIC_LIB", "KDLPP_STATIC_LIB",[[TERRANOVA_VERSION="0.2.1 Pontagea/Beira"]])
+add_defines("KDL_STATIC_LIB", "KDLPP_STATIC_LIB", [[TERRANOVA_VERSION="0.2.1 Pontagea/Beira"]])
 set_languages("c++23")
 add_includedirs("deps/ckdl/include", "deps/ckdl/bindings/cpp/include")
 add_packages("fmt", "drogon", "glog", "iguana", "sqlitecpp", "yyjson", "uriparser"
@@ -14,11 +15,14 @@ add_packages("fmt", "drogon", "glog", "iguana", "sqlitecpp", "yyjson", "uriparse
 )
 add_files("src/*.cpp", "deps/ckdl/src/*.c",
     "deps/ckdl/bindings/cpp/src/*.cpp")
-add_files("src/docs.html",{rule = "utils.bin2c"})
+add_files("src/docs.html", { rule = "utils.bin2c" })
 if is_plat("windows") then
 add_cxxflags("/bigobj")
 end
-after_load(function(target)
+if is_mode("debug") then
+    add_defines("TERRANOVA_DEBUG_MODE")
+end
+after_load( function (target)
     local version = "0.9.27"
     local downloaded_file = "deps/tcc/tcc-" .. version .. ".tar.bz2"
     if not os.exists(downloaded_file) then
@@ -47,7 +51,7 @@ after_load(function(target)
                 #endif
             ]]
             io.writefile(config_file, file_contents)
-        else 
+        else
             local old = os.cd(extracted_dir)
             os.exec("./configure")
             os.cd(old)
