@@ -4,5 +4,5 @@
 
 namespace db {
     SQLite::Database get_database(const struct application &app);
-    std::vector<prepared_statement_metadata> init_statements(const std::vector<application> &apps);
+    std::tuple<std::vector<prepared_statement_metadata>,bool>  init_statements(const std::vector<application> &apps);
 }

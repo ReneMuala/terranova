@@ -233,6 +233,7 @@ struct prepared_statement_metadata
     bool is_composed = true;
     std::vector<struct data> data;
     unsigned long long index;
+    std::string access;
 };
 
 // internal, not specified via kdl
@@ -246,6 +247,7 @@ struct generated_implementation
     void* prepared_statement{};
     bool is_composed = false;
     std::string query_name;
+    std::string access;
 };
 
 struct role {
@@ -262,6 +264,7 @@ struct auth
     std::string identity;
     std::string secret;
     std::string hash;
+    size_t timeout;
     bool persist;
     std::string _comments;
     std::vector<struct role> role;

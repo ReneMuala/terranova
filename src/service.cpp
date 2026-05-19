@@ -143,7 +143,7 @@ namespace service
             struct_def += "};\n";
         }
         prepared_statement_usage += fmt::format(
-            "result = prepared_statement_get_results_json(handler_{0}_prepared_statement, context);", id);
+            "result = prepared_statement_get_results_json(handler_{0}_prepared_statement, context,size);", id);
         if (stat.is_composed)
         {
             // we don't need to use prepared statements in composed queries
@@ -201,7 +201,7 @@ namespace service
                     prepared_statement_usage += "}";
                 });
             }
-            prepared_statement_usage.append(R"(result = prepared_statement_finish_results_json(result_obj);)");
+            prepared_statement_usage.append(R"(result = prepared_statement_finish_results_json(result_obj,size);)");
         }
         std::string body_def;
         if (stat.data_provider == prepared_statement_metadata::url_params and not stat.params.empty())
@@ -222,7 +222,7 @@ namespace service
             .route = stat.route,
             .method = stat.method,
             .code = prefix + struct_def + uri_param_handler_def + request_body_handler_def + fmt::format(
-                "const char * handler_{0}(void * handler_{0}_prepared_statement, const char* route, void* context, const char* body, int body_len){{const char * result = 0;{1}return 0;}}",
+                "const char * handler_{0}(void * handler_{0}_prepared_statement, const char* route, void* context, const char* body, int body_len, size_t * size){{const char * result = 0;{1}return 0;}}",
                 id, body_def) + suffix,
             .prepared_statement = prepared_stat_array,
             .is_composed = stat.is_composed,
@@ -277,7 +277,8 @@ void collect_int(
     void * input_buffer);
 const char * prepared_statement_get_results_json(
     void *prepared_statement,
-    void * context);
+    void * context, 
+    size_t * size);
 bool prepared_statement_reset(
     void * prepared_statement);
 void bind_statement_const_char(
@@ -334,7 +335,8 @@ bool get_request_body(
     void* destination,
     void* context);
 const char * prepared_statement_finish_results_json(
-    void * result);
+    void * result,
+    size_t * size);
 void prepared_statement_append_results_json(
     void ** result,
     void ** root_field,

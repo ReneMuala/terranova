@@ -1,3 +1,4 @@
+#include <tuple>
 #include <unordered_map>
 #include <fmt/core.h>
 #include <algorithm>
@@ -8,6 +9,8 @@
 #include <sqlite3.h>
 #include "db.hpp"
 #include "misc.hpp"
+#include "types.hpp"
+#include "authentication.hpp"
 
 namespace db
 {
@@ -228,7 +231,50 @@ namespace db
                 param{"offset", "int"},
             },
             .is_composed = false,
-            .index = index};
+            .index = index,
+            .access = entity.access
+        };
+    }
+
+    prepared_statement_metadata init_stmt_login(const SQLite::Database &database, const entity &entity, unsigned long long index, const auth & auth)
+    {
+        auto stmt = fmt::format("SELECT {0}.* FROM {0} WHERE {1} = :identity AND {3}({2}) = :secret LIMIT 1;",
+                                misc::throw_if_invalid_identifier(misc::tolower(entity.name)),
+                            misc::throw_if_invalid_identifier(misc::tolower(auth.identity)),
+                        misc::throw_if_invalid_identifier(misc::tolower(auth.secret)),
+                    misc::second_if_empty(misc::tolower(auth.hash), "/* WARNING: NO HASH! */"));
+        LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
+        return prepared_statement_metadata{
+            .name = "login",
+            .entity = entity.name,
+            .route = misc::to_route("auth/login"),
+            .method = "post",
+            .statement = SQLite::Statement(database, stmt),
+            .params = {
+                param{"identity", get_c_type("string")},
+                param{"secret", get_c_type("string")},
+            },
+            .data_provider = prepared_statement_metadata::request_body,
+            .is_composed = false,
+            .index = index
+        };
+    }
+
+    prepared_statement_metadata init_stmt_logout(const SQLite::Database &database, const entity &entity, unsigned long long index, const auth & auth)
+    {
+        auto stmt = fmt::format("/*LOGOUT OPAQUE QUERY*/ SELECT 1;");
+        LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
+        return prepared_statement_metadata{
+            .name = "login",
+            .entity = entity.name,
+            .route = misc::to_route("auth/logout"),
+            .method = "post",
+            .statement = SQLite::Statement(database, stmt),
+            .params = {},
+            .is_composed = false,
+            .index = index,
+            .access = "private"
+        };
     }
 
     inline std::string with_comma_suffix(const std::string &name)
@@ -302,7 +348,8 @@ namespace db
             .params = params,
             .data_provider = prepared_statement_metadata::request_body,
             .is_composed = false,
-            .index = index};
+            .index = index,
+            .access = entity.access};
     }
 
     inline std::string form_set_statement(const std::string &name)
@@ -372,7 +419,9 @@ namespace db
             .params = params,
             .data_provider = prepared_statement_metadata::request_body,
             .is_composed = false,
-            .index = index};
+            .index = index,
+            .access = entity.access
+        };
     }
 
     prepared_statement_metadata init_stmt_delete(const SQLite::Database &database, const entity &entity, unsigned long long index)
@@ -396,7 +445,8 @@ namespace db
             .params = params,
             .data_provider = prepared_statement_metadata::url_params,
             .is_composed = false,
-            .index = index};
+            .index = index,
+            .access = entity.access};
     }
 
     bool contains(const std::string &target, const std::vector<param> &params)
@@ -459,7 +509,8 @@ namespace db
             .params = stat_params,
             ._comments = comments,
             .is_composed = false,
-            .index = index};
+            .index = index,
+            .access = entity.access};
     }
 
     prepared_statement_metadata init_stmt_custom_composed(const SQLite::Database &database, const entity &entity,
@@ -503,7 +554,8 @@ namespace db
             ._comments = comments,
             .is_composed = true,
             .data = data,
-            .index = index};
+            .index = index,
+            .access = entity.access};
     }
 
     inline prepared_statement_metadata init_stmt_custom(const SQLite::Database &database, const entity &entity,
@@ -580,9 +632,10 @@ namespace db
                                 SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
     }
 
-    std::vector<prepared_statement_metadata> init_statements(const std::vector<application> &apps)
+    std::tuple<std::vector<prepared_statement_metadata>,bool> init_statements(const std::vector<application> &apps)
     {
-        std::vector<prepared_statement_metadata> prepared_stmts;
+        std::vector<prepared_statement_metadata> general_stmts;
+        bool has_auth_stmts = false;
         for (auto &app : apps)
         {
             routes::namespace_lock lock(app.namespace_);
@@ -598,35 +651,40 @@ namespace db
                 LOG(INFO) << fmt::format("generating queries for \"{}\"", entity.name);
                 if (init_entity(database, entity, entity_ref_map))
                 {
-                    prepared_stmts.emplace_back(init_stmt_select(database, entity, entity._4x_padded_index));
-                    prepared_stmts.emplace_back(init_stmt_insert(database, entity, entity_ref_map, entity._4x_padded_index + 1));
+                    if(not has_auth_stmts){
+                        has_auth_stmts = authentication::init_auth(app, entity_ref_map, general_stmts);
+                    }
+                    general_stmts.emplace_back(init_stmt_select(database, entity, entity._4x_padded_index));
+                    general_stmts.emplace_back(init_stmt_insert(database, entity, entity_ref_map, entity._4x_padded_index + 1));
                     if (entity.schema.pk)
-                        prepared_stmts.emplace_back(init_stmt_update(database, entity, entity_ref_map, entity._4x_padded_index + 2));
+                        general_stmts.emplace_back(init_stmt_update(database, entity, entity_ref_map, entity._4x_padded_index + 2));
                     else
                         LOG(WARNING) << fmt::format("could not generate update statement for \"{}\", reason: no pk",
                                                     entity.name);
                     if (entity.schema.pk)
-                        prepared_stmts.emplace_back(init_stmt_delete(database, entity, entity._4x_padded_index + 3));
+                        general_stmts.emplace_back(init_stmt_delete(database, entity, entity._4x_padded_index + 3));
                     else
                         LOG(WARNING) << fmt::format("could not generate delete statement for \"{}\", reason: no pk",
                                                     entity.name);
                 }
                 for (const auto &query : entity.queries.get)
-                    prepared_stmts.emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, query.data, "get",
+                    general_stmts.emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, query.data, "get",
                                                                  query._comments, query._index));
                 for (const auto &query : entity.queries.post)
-                    prepared_stmts.emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, query.data,
+                    general_stmts.emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, query.data,
                                                                  "post", query._comments, query._index,
                                                                  prepared_statement_metadata::request_body));
                 for (const auto &query : entity.queries.put)
-                    prepared_stmts.emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, query.data,
+                    general_stmts.emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, query.data,
                                                                  "put", query._comments, query._index,
                                                                  prepared_statement_metadata::request_body));
                 for (const auto &query : entity.queries.delete_)
-                    prepared_stmts.emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, query.data, "delete",
+                    general_stmts.emplace_back(init_stmt_custom(database, entity, query.name, query.sql, query.params, query.data, "delete",
                                                                  query._comments, query._index));
             }
+            
         }
-        return std::move(prepared_stmts);
+
+        return std::make_tuple(std::move(general_stmts), has_auth_stmts);
     }
 }

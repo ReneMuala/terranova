@@ -1,9 +1,17 @@
 #include <any>
+#include <cstddef>
+#include <cstring>
 #include <exception>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <regex>
 #include <fmt/core.h>
+#include "authentication.hpp"
+#include "drogon/Cookie.h"
+#include "drogon/HttpTypes.h"
+#include "drogon/utils/Utilities.h"
+#include "fmt/format.h"
 #include "kdlpp.h"
 #include <glog/logging.h>
 #include "iguana/ylt/reflection/member_value.hpp"
@@ -17,7 +25,6 @@
 #include "CLI11.hpp"
 #include "mch.hpp"
 #include <list>
-#include "authentication.hpp"
 #include "misc.hpp"
 #include "db.hpp"
 #include "service.hpp"
@@ -106,7 +113,7 @@ void get_loader()
     return handlers[struct_name];
 }
 
-static unsigned long long _global_index = 1;
+unsigned long long global_statement_index = 1;
 
 template <typename T>
 void load(kdl::Node& node, T& type)
@@ -116,13 +123,13 @@ void load(kdl::Node& node, T& type)
     if (has_field<T>("_index"))
     {
         auto& _index = ylt::reflection::get<unsigned long long>(type, "_index");
-        _index = _global_index++;
+        _index = global_statement_index++;
     }
     if (has_field<T>("_4x_padded_index"))
     {
         auto& _4x_padded_index = ylt::reflection::get<unsigned long long>(type, "_4x_padded_index");
-        _4x_padded_index = _global_index;
-        _global_index+=4ull;
+        _4x_padded_index = global_statement_index;
+        global_statement_index+=4ull;
     }
     if (has_field<T>("_comments"))
     {
@@ -533,12 +540,12 @@ int to_sqlite_type(const std::string& name)
 }
 void error_handler(const char* what, const char* message, void* context);
 
-const char * prepared_statement_finish_results_json(void * result)
+const char * prepared_statement_finish_results_json(void * result, size_t * size)
 {
     if (result)
     {
         yyjson_mut_doc* output_doc = (yyjson_mut_doc*)result;
-        char* body = yyjson_mut_write(output_doc, YYJSON_WRITE_ESCAPE_UNICODE, NULL);
+        char* body = yyjson_mut_write(output_doc, YYJSON_WRITE_ESCAPE_UNICODE, size);
         yyjson_mut_doc_free(output_doc);
         return body;
     }
@@ -600,7 +607,7 @@ void prepared_statement_append_results_json(void ** result, void ** root_field,c
     yyjson_mut_obj_add_int(output_doc, current_obj, "modified", stat->getChanges());
 }
 
-const char* prepared_statement_get_results_json(void* prepared_statement, void * context)
+const char* prepared_statement_get_results_json(void* prepared_statement, void * context, size_t * size)
 {
     SQLite::Statement* stat = (SQLite::Statement*)prepared_statement;
     yyjson_mut_doc* output_doc = yyjson_mut_doc_new(NULL);
@@ -645,7 +652,7 @@ const char* prepared_statement_get_results_json(void* prepared_statement, void *
     else
         yyjson_mut_obj_add_null(output_doc, output_root, "error");
     yyjson_mut_obj_add_int(output_doc, output_root, "modified", stat->getChanges());
-    char* body = yyjson_mut_write(output_doc, YYJSON_WRITE_ESCAPE_UNICODE, NULL);
+    char* body = yyjson_mut_write(output_doc, YYJSON_WRITE_ESCAPE_UNICODE, size);
     yyjson_mut_doc_free(output_doc);
     return body;
 }
@@ -838,7 +845,7 @@ void error_handler(const char* what, const char* message, void* context)
     }
 }
 
-typedef char* (*handler_t)(void* prepared_statement, const char* route, void* context, const char* body, int body_len);
+typedef char* (*handler_t)(void* prepared_statement, const char* route, void* context, const char* body, int body_len, size_t * output_size);
 
 char* handler_json_request(const char* route, void* context, const char* body, int body_len)
 {
@@ -1000,10 +1007,9 @@ void server_mode(const std::string filename, const std::string profile)
     std::optional<kdl::Document> document = kdl::parse(content);
     std::vector<application> apps;
     load(document.value(), apps);
-    std::vector<prepared_statement_metadata> prepared_statements = db::init_statements(apps);
-    docs::init_docs(apps, prepared_statements);
-    authentication::init_auth(apps);
-    auto init_result = service::init_services(prepared_statements);
+    auto [general_stmts, has_authentication] = db::init_statements(apps);
+    docs::init_docs(apps, general_stmts);
+    auto init_result = service::init_services(general_stmts);
     service::cjit service_layer("generated_service_layer_1.c");
     service_layer.push("log", (void*)log_message);
     service_layer.push("log_address", (void*)log_address);
@@ -1031,20 +1037,79 @@ void server_mode(const std::string filename, const std::string profile)
     service_layer.push("prepared_statement_finish_results_json", (void*)prepared_statement_finish_results_json);
     service_layer.compile(init_result.second);
     LOG(INFO) << fmt::format("generated & compiled {} api services successfully", init_result.first.size());
-    for (generated_implementation& impl : init_result.first)
+    auto size = init_result.first.size();
+    for (size_t i = 0; i < size; i++)
     {
+        generated_implementation& impl = init_result.first[i];
         LOG(INFO) << fmt::format("{} {} -> {}(...)", impl.method, impl.route, impl.name);
         service_layer.push("get_request_body", (void*)get_request_body);
         handler_t handler = (handler_t)service_layer.peek(impl.name);
         void* prepared_stat = impl.prepared_statement;
 
-        drogon::app().registerHandler(
+        if(i < 2 and has_authentication){
+            if(i == 0) {
+                drogon::app().registerHandler(
+                impl.route, [handler, prepared_stat](const drogon::HttpRequestPtr& req, Callback&& callback)
+                {
+                    auto resp = drogon::HttpResponse::newHttpResponse();
+                    resp->setContentTypeCode(drogon::ContentType::CT_APPLICATION_JSON);
+                    size_t _r0_size = 0;
+                    if (auto _r0 = handler(prepared_stat, ("/?" + req->getQuery()).c_str(), (void*)resp.get(),
+                                        req->getBody().data(), req->getBody().size(),&_r0_size))
+                    {
+                        if (yyjson_doc* input_doc = yyjson_read(_r0, _r0_size, 0)){
+                            yyjson_val* input_root = yyjson_doc_get_root(input_doc);
+                            size_t count = yyjson_get_uint(yyjson_obj_get(input_root, "count"));
+                            if(count==1){
+                                resp->setBody(_r0);
+                                req->session()->insert("a", std::make_shared<authentication::session>(input_doc));
+                                req->session()->insert("roles", std::unordered_set<std::string>());
+                                auto session = drogon::utils::getUuid(false);
+                            } else {
+                                resp->setStatusCode(drogon::k404NotFound);
+                                yyjson_doc_free(input_doc);
+                            }
+                        }
+                        free((void*)_r0);
+                    }
+                    callback(resp);
+                }, {to_drogon_http_method(impl.method)});
+            } else {
+                drogon::app().registerHandler(
             impl.route, [handler, prepared_stat](const drogon::HttpRequestPtr& req, Callback&& callback)
+                    {
+                        req->session()->clear();
+                        auto resp = drogon::HttpResponse::newHttpResponse();
+                        resp->setContentTypeCode(drogon::ContentType::CT_NONE);
+                        callback(resp);
+                    }, {to_drogon_http_method(impl.method)
+                });
+            }
+            continue;
+        }
+        std::string access = impl.access;
+        bool is_not_public = not(access.empty() or access == "public"); 
+        drogon::app().registerHandler(
+            impl.route, [is_not_public, access, handler, prepared_stat](const drogon::HttpRequestPtr& req, Callback&& callback)
             {
+              
                 auto resp = drogon::HttpResponse::newHttpResponse();
+                if(is_not_public){
+                    if(not req->session()){
+                        resp->setContentTypeCode(drogon::ContentType::CT_NONE);
+                        resp->setStatusCode(drogon::k401Unauthorized);
+                        callback(resp);
+                        return;
+                    } else if(not req->session()->get<std::unordered_set<std::string>>("roles").contains(access)){
+                        resp->setContentTypeCode(drogon::ContentType::CT_NONE);
+                        resp->setStatusCode(drogon::k403Forbidden);
+                        callback(resp);
+                        return;
+                    }
+                }
                 resp->setContentTypeCode(drogon::ContentType::CT_APPLICATION_JSON);
                 if (auto _r0 = handler(prepared_stat, ("/?" + req->getQuery()).c_str(), (void*)resp.get(),
-                                       req->getBody().data(), req->getBody().size()))
+                                       req->getBody().data(), req->getBody().size(), nullptr))
                 {
                     resp->setBody(_r0);
                     free((void*)_r0);
@@ -1074,7 +1139,7 @@ void server_mode(const std::string filename, const std::string profile)
                 if (handler)
                 {
                     if (auto _r0 = handler(prepared_stat, ("/?" + req->getQuery()).c_str(), (void*)resp.get(),
-                                       req->getBody().data(), req->getBody().size()))
+                                       req->getBody().data(), req->getBody().size(), nullptr))
                     {
                         resp->setBody(_r0);
                         free((void*)_r0);
@@ -1092,6 +1157,9 @@ void server_mode(const std::string filename, const std::string profile)
     document.reset();
     content.clear();
     srv::init_listeners(apps, profile);
+    if(apps.size()){
+        drogon::app().enableSession(apps[0].auth.timeout, drogon::Cookie::SameSite::kNull, "Authorization");
+    }
     apps.clear();
     // hks::test();
     drogon::app()
