@@ -1,9 +1,12 @@
+#include <stdexcept>
 #include <tuple>
 #include <unordered_map>
 #include <fmt/core.h>
 #include <algorithm>
 #include <regex>
 #include <glog/logging.h>
+#include "fmt/base.h"
+#include "fmt/format.h"
 #include "routes.hpp"
 #include <unordered_set>
 #include <sqlite3.h>
@@ -243,6 +246,40 @@ namespace db
                             misc::throw_if_invalid_identifier(misc::tolower(auth.identity)),
                         misc::throw_if_invalid_identifier(misc::tolower(auth.secret)),
                     misc::second_if_empty(misc::tolower(auth.hash), "/* WARNING: NO HASH! */"));
+        LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
+        return prepared_statement_metadata{
+            .name = "login",
+            .entity = entity.name,
+            .route = misc::to_route("auth/login"),
+            .method = "post",
+            .statement = SQLite::Statement(database, stmt),
+            .params = {
+                param{"identity", get_c_type("string")},
+                param{"secret", get_c_type("string")},
+            },
+            .data_provider = prepared_statement_metadata::request_body,
+            .is_composed = false,
+            .index = index
+        };
+    }
+
+    static const auto check_regex_regex = std::regex(">|<");
+
+    prepared_statement_metadata init_stmt_role_set(const SQLite::Database &database, const entity &entity, unsigned long long index, const auth & auth)
+    {
+        std::string stmt = "SELECT /* BEGIN RULESET */";
+        // check for role count 
+        for(auto rl : auth.role){
+            if(not rl.sql.empty()) {
+                stmt.append(fmt::format("({1}) as {0}", misc::throw_if_invalid_identifier(misc::tolower(rl.name)), rl.sql));
+            } else if(not rl.when.empty() and rl.is.empty()){
+                throw std::runtime_error(fmt::format("rule \"{}\" as field \"when\" but no field \"is\"", rl.name));
+            } else if(rl.is.empty() and not rl.when.empty()){
+                throw std::runtime_error(fmt::format("rule \"{}\" as field \"is\" but no field \"when\"", rl.name));
+            } else {
+                stmt.append(fmt::format("({1} = {2}) as {0},", misc::throw_if_invalid_identifier(misc::tolower(rl.name)), rl.when, rl.is));
+            }
+        }
         LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
         return prepared_statement_metadata{
             .name = "login",

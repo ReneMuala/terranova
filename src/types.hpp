@@ -252,9 +252,8 @@ struct generated_implementation
 
 struct role {
     std::string name;
-    std::string from;
-    std::string check;
-    std::string value;
+    std::string when;
+    std::string is;
     std::string sql;
 };
 
