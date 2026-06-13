@@ -1,5 +1,6 @@
 #include <any>
 #include <cstddef>
+#include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <fstream>
@@ -21,6 +22,7 @@
 #include "uriparser/Uri.h"
 #include "types.hpp"
 #include <sqlite3.h>
+#include <string>
 #include <unordered_set>
 #include "CLI11.hpp"
 #include "mch.hpp"
@@ -397,7 +399,7 @@ void load(kdl::Node& node, T& type)
                     load<data>(child, it.emplace_back());
                     success = true;
                 }
-            } else if constexpr (std::is_same_v<decltype(it), std::vector<bind>&>)
+            } else if constexpr (std::is_same_v<decltype(it), std::vector<struct bind>&>)
             {
                 if (child_name == "bind")
                 {
@@ -463,6 +465,14 @@ bool prepared_statement_reset(void* prepared_statement)
     }
     return false;
 }
+// void bind_statement_session_id(void* prepared_statement, const char* name, const char* value)
+// {
+//     SQLite::Statement* stat = (SQLite::Statement*)prepared_statement;
+//     if (stat and name and value)
+//     {
+//         stat->bind(name, value);
+//     }
+// }
 
 void bind_statement_const_char(void* prepared_statement, const char* name, const char* value)
 {
@@ -666,6 +676,8 @@ void bind_statement_bool(void* prepared_statement, const char* name, bool value)
     }
 }
 
+
+
 typedef bool (*request_body_handler_t)(void* userdata, void* json_object);
 
 bool get_request_body(const char* body, int body_len, request_body_handler_t callback, void* userdata,
@@ -770,6 +782,71 @@ std::string get_error_page(const std::string& location, const std::string& descr
 #include <drogon/drogon.h>
 
 
+constexpr int SESSION_PREFIX_SIZE = 9; //#session.
+void collect_session_int(int* field, const char * session_query, int default_,
+                      void* context)
+{
+    bool success = false;
+    drogon::HttpRequest* ctx = (drogon::HttpRequest*)context;
+    if(ctx and ctx->session()){
+        if(auto data = ctx->session()->getOptional<int>(std::string(session_query+SESSION_PREFIX_SIZE))){
+            success = true;
+            *field = data.value();
+        }
+    }
+    if(not success){
+        *field = default_;
+    }
+}
+
+void collect_session_float(float* field, const char * session_query, float default_,
+                      void* context)
+{
+    bool success = false;
+    drogon::HttpRequest* ctx = (drogon::HttpRequest*)context;
+    if(ctx and ctx->session()){
+        if(auto data = ctx->session()->getOptional<float>(std::string(session_query+SESSION_PREFIX_SIZE))){
+            success = true;
+            *field = data.value();
+        }
+    }
+    if(not success){
+        *field = default_;
+    }
+}
+
+void collect_session_char_const(const char ** field, const char * session_query, char const* default_,
+                      void* context)
+{
+    bool success = false;
+    drogon::HttpRequest* ctx = (drogon::HttpRequest*)context;
+    if(ctx and ctx->session()){
+        if(auto data = ctx->session()->getOptional<std::string>(std::string(session_query+SESSION_PREFIX_SIZE))){
+            success = true;
+            *field = strdup(data.value().c_str());
+        }
+    }
+    if(not success){
+        *field = strdup(default_);
+    }
+}
+
+void collect_session_bool(bool* field, const char * session_query, bool default_,
+                      void* context)
+{
+    bool success = false;
+    drogon::HttpRequest* ctx = (drogon::HttpRequest*)context;
+    if(ctx and ctx->session()){
+        if(auto data = ctx->session()->getOptional<bool>(std::string(session_query+SESSION_PREFIX_SIZE))){
+            success = true;
+            *field = data.value();
+        }
+    }
+    if(not success){
+        *field = default_;
+    }
+}
+
 namespace srv
 {
     void init_listeners(const std::vector<application>& apps, const std::string& select_profile)
@@ -845,7 +922,7 @@ void error_handler(const char* what, const char* message, void* context)
     }
 }
 
-typedef char* (*handler_t)(void* prepared_statement, const char* route, void* context, const char* body, int body_len, size_t * output_size);
+typedef char* (*handler_t)(void* prepared_statement, const char* route, void* context, void* req_context, const char* body, int body_len, size_t * output_size);
 
 char* handler_json_request(const char* route, void* context, const char* body, int body_len)
 {
@@ -989,7 +1066,7 @@ namespace vws
     }
 }
 
-void server_mode(const std::string filename, const std::string profile)
+void server_mode(const std::string filename, const std::string profile, bool write_c_file)
 {
     fmt::println(R"(┌┬┐┌─┐┬─┐┬─┐┌─┐┌┐┌┌─┐┬  ┬┌─┐
  │ ├┤ ├┬┘├┬┘├─┤││││ │└┐┌┘├─┤
@@ -1035,7 +1112,11 @@ void server_mode(const std::string filename, const std::string profile)
     service_layer.push("get_request_body", (void*)get_request_body);
     service_layer.push("prepared_statement_append_results_json", (void*)prepared_statement_append_results_json);
     service_layer.push("prepared_statement_finish_results_json", (void*)prepared_statement_finish_results_json);
-    service_layer.compile(init_result.second);
+    service_layer.push("collect_session_int", (void*)collect_session_int);
+    service_layer.push("collect_session_float", (void*)collect_session_float);
+    service_layer.push("collect_session_char_const", (void*)collect_session_char_const);
+    service_layer.push("collect_session_bool", (void*)collect_session_bool);
+    service_layer.compile(init_result.second, write_c_file);
     LOG(INFO) << fmt::format("generated & compiled {} api services successfully", init_result.first.size());
     auto size = init_result.first.size();
     for (size_t i = 0; i < size; i++)
@@ -1054,7 +1135,7 @@ void server_mode(const std::string filename, const std::string profile)
                     auto resp = drogon::HttpResponse::newHttpResponse();
                     resp->setContentTypeCode(drogon::ContentType::CT_APPLICATION_JSON);
                     size_t _r0_size = 0;
-                    if (auto _r0 = handler(prepared_stat, ("/?" + req->getQuery()).c_str(), (void*)resp.get(),
+                    if (auto _r0 = handler(prepared_stat, ("/?" + req->getQuery()).c_str(), (void*)resp.get(),(void*)req.get(),
                                         req->getBody().data(), req->getBody().size(),&_r0_size))
                     {
                         if (yyjson_doc* input_doc = yyjson_read(_r0, _r0_size, 0)){
@@ -1108,7 +1189,7 @@ void server_mode(const std::string filename, const std::string profile)
                     }
                 }
                 resp->setContentTypeCode(drogon::ContentType::CT_APPLICATION_JSON);
-                if (auto _r0 = handler(prepared_stat, ("/?" + req->getQuery()).c_str(), (void*)resp.get(),
+                if (auto _r0 = handler(prepared_stat, ("/?" + req->getQuery()).c_str(), (void*)resp.get(),(void*)req.get(),
                                        req->getBody().data(), req->getBody().size(), nullptr))
                 {
                     resp->setBody(_r0);
@@ -1138,7 +1219,7 @@ void server_mode(const std::string filename, const std::string profile)
                 resp->setContentTypeCode(drogon::ContentType::CT_TEXT_HTML);
                 if (handler)
                 {
-                    if (auto _r0 = handler(prepared_stat, ("/?" + req->getQuery()).c_str(), (void*)resp.get(),
+                    if (auto _r0 = handler(prepared_stat, ("/?" + req->getQuery()).c_str(), (void*)resp.get(),(void*)req.get(),
                                        req->getBody().data(), req->getBody().size(), nullptr))
                     {
                         resp->setBody(_r0);
@@ -1198,11 +1279,11 @@ int main(int argc, char** argv) try
     serve_cmd->add_option("-p,--profile", profile, "Name of profile to use");
 
     serve_cmd->callback([&file, &profile]() {
-        server_mode(file, profile);
+        server_mode(file, profile, false);
     });
 
     #ifdef TERRANOVA_DEBUG_MODE
-        server_mode(file, profile);
+        server_mode(file, profile, true);
     #endif
     /*
     auto* msgpack_cmd = app.add_subcommand("msgpack", "Test msgpack");

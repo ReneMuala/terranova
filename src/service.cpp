@@ -1,252 +1,340 @@
 #include "service.hpp"
-#include <cstdlib>
+
 #include <glog/logging.h>
+
+#include <cstdlib>
 #include <functional>
 #include <regex>
 #include <unordered_set>
+
+#include "fmt/base.h"
+#include "fmt/format.h"
 #include "misc.hpp"
-namespace service
-{
-    static std::list<void*> _tracked_malloc_data;
-    void * tracked_malloc(size_t size)
-    {
-        void * it  = malloc(size);
-        _tracked_malloc_data.push_back(it);
-        return it;
+#include "types.hpp"
+namespace service {
+static std::list<void*> _tracked_malloc_data;
+void* tracked_malloc(size_t size) {
+    void* it = malloc(size);
+    _tracked_malloc_data.push_back(it);
+    return it;
+}
+void free_all_tracked_malloc() {
+    for (auto& it : _tracked_malloc_data) {
+        free(it);
     }
-    void free_all_tracked_malloc()
-    {
-        for (auto & it : _tracked_malloc_data)
-        {
-            free(it);
-        }
-    }
-    void error_handler(void* opaque, const char* msg)
-    {
-        const char* service_name = static_cast<char*>(opaque);
-        LOG(WARNING) << fmt::format("tcc error: {} in service\"{}\"", msg, service_name);
-        exit(0);
-    }
+}
+void error_handler(void* opaque, const char* msg) {
+    const char* service_name = static_cast<char*>(opaque);
+    LOG(WARNING) << fmt::format("tcc error: {} in \"{}\"", msg, service_name);
+    exit(0);
+}
 
-    // std::function<void()> init_read_service(SQLite::Statement & statement)
-    // {
-    //     return [&statement]
-    //     {
-    //         statement;
-    //
-    //     };
-    // }
+// std::function<void()> init_read_service(SQLite::Statement & statement)
+// {
+//     return [&statement]
+//     {
+//         statement;
+//
+//     };
+// }
 
-    generated_implementation generate_implementation(const prepared_statement_metadata& stat, const std::function<void(const std::string & en, const std::string & qn, const std::function<void(const prepared_statement_metadata&)>& cbk)>& find_stmt)
-    {
-        unsigned long long id = stat.index;
-        std::string struct_def;
-        std::string uri_param_handler_def;
-        std::string output_handler_def;
-        std::string request_body_handler_def;
-        std::string destructor, constructor;
-        std::string prepared_statement_usage;
-        void ** prepared_stat_array = (void**)(stat.is_composed ? tracked_malloc(sizeof(void*) * stat.data.size()) : (void*)&stat.statement);
-        const std::string prefix = fmt::format(R"(
+inline void generate_statement_usage(std::string& statement_usage_buffer_instructions,
+                                     const param& param, unsigned long long id) {
+    if (param.type == "const char *") {
+        statement_usage_buffer_instructions.append(fmt::format(
+            "bind_statement_const_char(handler_{0}_prepared_statement, \":{1}\", input.{1});", id,
+            param.name));
+    } else if (param.type == "int") {
+        statement_usage_buffer_instructions.append(
+            fmt::format("bind_statement_int(handler_{0}_prepared_statement, \":{1}\", input.{1});",
+                        id, param.name));
+    } else if (param.type == "float") {
+        statement_usage_buffer_instructions.append(fmt::format(
+            "bind_statement_float(handler_{0}_prepared_statement, \":{1}\", input.{1});", id,
+            param.name));
+    } else if (param.type == "bool") {
+        statement_usage_buffer_instructions.append(
+            fmt::format("bind_statement_bool(handler_{0}_prepared_statement, \":{1}\", input.{1});",
+                        id, param.name));
+    }
+}
+
+inline void generate_session_param_collect(std::string& session_param_collect_instructions,
+                                           std::string& destructor_instructions,
+                                           const param& param) {
+    if (param.type == "const char *") {
+        session_param_collect_instructions.append(fmt::format(
+            R"(collect_session_const_char((const char**)&params->{0}, "{1}", "{2}", req_context);)",
+            param.name, param.value, param.default_));
+        destructor_instructions.append(
+            fmt::format("if(input.{0})free((void*)input.{0});", param.name));
+    } else if (param.type == "int") {
+        session_param_collect_instructions.append(fmt::format(
+            R"(collect_session_int((int*)&params->{0}, "{1}", {2}, req_context);)", param.name,
+            param.value,
+            (int)std::strtol(misc::second_if_empty(param.default_, "0").c_str(), nullptr, 10)));
+    } else if (param.type == "float") {
+        session_param_collect_instructions.append(fmt::format(
+            R"(collect_session_float((int*)&params->{0}, "{1}", {2}, req_context);)", param.name,
+            param.value,
+            (float)std::strtof(misc::second_if_empty(param.default_, "0.0f").c_str(), nullptr)));
+    } else if (param.type == "bool") {
+        session_param_collect_instructions.append(
+            fmt::format(R"(collect_session_bool((int*)&params->{0}, "{1}", {2}, req_context);)",
+                        param.name, param.value, misc::second_if_empty(param.default_, "false")));
+    }
+}
+
+generated_implementation generate_implementation(
+    const prepared_statement_metadata& stat,
+    const std::function<void(const std::string& en, const std::string& qn,
+                             const std::function<void(const prepared_statement_metadata&)>& cbk)>&
+        find_stmt) {
+    unsigned long long id = stat.index;
+    std::string struct_def;
+    std::string uri_param_handler_def;
+    std::string output_handler_def;
+    std::string request_body_handler_def;
+    std::string session_param_collect_instructions;
+    std::string destructor_instructions, constructor;
+    std::string prepared_statement_usage;
+    void** prepared_stat_array =
+        (void**)(stat.is_composed ? tracked_malloc(sizeof(void*) * stat.data.size())
+                                  : (void*)&stat.statement);
+    const std::string prefix =
+        fmt::format(R"(
 //----------BEGIN {0}: {3} "{2}" --------
 /* {1} */
-)", id, std::regex_replace(stat.statement.getQuery(), std::regex("\\*/"), "* /"), stat.route, stat.method);
-        const std::string suffix = fmt::format(R"(
+)",
+                    id, std::regex_replace(stat.statement.getQuery(), std::regex("\\*/"), "* /"),
+                    stat.route, stat.method);
+    const std::string suffix = fmt::format(R"(
 //----------END {0}--------
-)", id);
-
-        prepared_statement_usage = fmt::format("prepared_statement_reset(handler_{0}_prepared_statement);", id);
-        if (not stat.params.empty())
-        {
-            struct_def = fmt::format("struct _{0}", id);
-            if (stat.data_provider == prepared_statement_metadata::url_params)
-                uri_param_handler_def = fmt::format(
-                    "bool uri_parameter_handler_{0}(const char* key, const char* value, void* destination, void* context)",
-                    id) + "{" + fmt::format("struct _{0}* params = (struct _{0}*)(destination);", id);
-            else if (stat.data_provider == prepared_statement_metadata::request_body)
-                request_body_handler_def = fmt::format(
-                    "void request_body_handler_{0}(void* ob, void* ib)",
-                    id) + "{" + fmt::format("struct _{0}* params = (struct _{0}*)(ob);", id);
-            struct_def += "{";
-            bool first = true;
-            for (const auto& param : stat.params)
-            {
+)",
+                                           id);
+    size_t normal_params = 0;
+    prepared_statement_usage =
+        fmt::format("prepared_statement_reset(handler_{0}_prepared_statement);", id);
+    if (not stat.params.empty()) {
+        struct_def = fmt::format("struct _{0}", id);
+        if (stat.data_provider == prepared_statement_metadata::url_params)
+            uri_param_handler_def =
+                fmt::format(
+                    "bool uri_parameter_handler_{0}(const char* key, const char* value, void* "
+                    "destination, void* context)",
+                    id) +
+                "{" + fmt::format("struct _{0}* params = (struct _{0}*)(destination);", id);
+        else if (stat.data_provider == prepared_statement_metadata::request_body)
+            request_body_handler_def =
+                fmt::format("void request_body_handler_{0}(void* ob, void* ib)", id) + "{" +
+                fmt::format("struct _{0}* params = (struct _{0}*)(ob);", id);
+        struct_def += "{";
+        bool first = true;
+        for (const auto& param : stat.params) {
+            struct_def += fmt::format("{} {};", param.type, param.name);
+            constructor += fmt::format("input.{0} = 0;", param.name);
+            generate_statement_usage(prepared_statement_usage, param, id);
+            if (param.value.empty()) {
+                normal_params++;
                 if (stat.data_provider == prepared_statement_metadata::url_params)
                     uri_param_handler_def += (first ? "" : "else ");
-                constructor += fmt::format("input.{0} = 0;", param.name);
-                if (param.type == "const char *")
-                {
-                    prepared_statement_usage += fmt::format(
-                        "bind_statement_const_char(handler_{0}_prepared_statement, \":{1}\", input.{1});", id,
-                        param.name);
+                if (param.type == "const char *") {
                     if (stat.data_provider == prepared_statement_metadata::url_params)
                         uri_param_handler_def += fmt::format(
                             R"(if (strncmp(key, "{0}", {1}) == 0) {{  params->{0} = duplicate_string(value); /* {2} */ }})",
-                            param.name,
-                            param.name.size(), param.type);
+                            param.name, param.name.size(), param.type);
                     else if (stat.data_provider == prepared_statement_metadata::request_body)
                         request_body_handler_def += fmt::format(
                             R"(collect_const_char("{0}", (void**)&params->{0}, ib);)", param.name);
-                    destructor = fmt::format("if(input.{0})free((void*)input.{0});", param.name);
-                }
-                else if (param.type == "int")
-                {
-                    prepared_statement_usage += fmt::format(
-                        "bind_statement_int(handler_{0}_prepared_statement, \":{1}\", input.{1});", id,
-                        param.name);
+                    destructor_instructions.append(
+                        fmt::format("if(input.{0})free((void*)input.{0});", param.name));
+                } else if (param.type == "int") {
                     if (stat.data_provider == prepared_statement_metadata::url_params)
                         uri_param_handler_def += fmt::format(
-                            R"(if (strncmp(key, "{0}", {1}) == 0) params->{0} = atoi(value); /* {2} */)", param.name,
-                            param.name.size(), param.type);
+                            R"(if (strncmp(key, "{0}", {1}) == 0) params->{0} = atoi(value); /* {2} */)",
+                            param.name, param.name.size(), param.type);
                     else if (stat.data_provider == prepared_statement_metadata::request_body)
-                        request_body_handler_def += fmt::format(R"(collect_int("{0}", (void*)&params->{0}, ib);)",
-                                                                param.name);
-                }
-                else if (param.type == "float")
-                {
-                    prepared_statement_usage += fmt::format(
-                        "bind_statement_float(handler_{0}_prepared_statement, \":{1}\", input.{1});", id,
-                        param.name);
+                        request_body_handler_def += fmt::format(
+                            R"(collect_int("{0}", (void*)&params->{0}, ib);)", param.name);
+                } else if (param.type == "float") {
                     if (stat.data_provider == prepared_statement_metadata::url_params)
                         uri_param_handler_def += fmt::format(
                             R"(if (strncmp(key, "{0}", {1}) == 0) params->{0} = (float)atof(value); /* {2} */)",
                             param.name, param.name.size(), param.type);
                     else if (stat.data_provider == prepared_statement_metadata::request_body)
-                        request_body_handler_def += fmt::format(R"(collect_float("{0}", (void*)&params->{0}, ib);)",
-                                                                param.name);
-                }
-                else if (param.type == "bool")
-                {
-                    prepared_statement_usage += fmt::format(
-                        "bind_statement_bool(handler_{0}_prepared_statement, \":{1}\", input.{1});", id,
-                        param.name);
+                        request_body_handler_def += fmt::format(
+                            R"(collect_float("{0}", (void*)&params->{0}, ib);)", param.name);
+                } else if (param.type == "bool") {
                     if (stat.data_provider == prepared_statement_metadata::url_params)
                         uri_param_handler_def += fmt::format(
-                            R"(if (strncmp(key, "{0}", {1}) == 0) params->{0} = atob(value); /* {2} */)", param.name,
-                            param.name.size(), param.type);
+                            R"(if (strncmp(key, "{0}", {1}) == 0) params->{0} = atob(value); /* {2} */)",
+                            param.name, param.name.size(), param.type);
                     else if (stat.data_provider == prepared_statement_metadata::request_body)
-                        request_body_handler_def += fmt::format(R"(collect_bool("{0}", (void*)&params->{0}, ib);)",
-                                                                param.name);
-                }
-                else
+                        request_body_handler_def += fmt::format(
+                            R"(collect_bool("{0}", (void*)&params->{0}, ib);)", param.name);
+                } else
                     throw std::runtime_error(fmt::format(
-                        "type \"{}\" is not supported in service implementation",
-                        param.type));
-                struct_def += fmt::format("{} {};", param.type, param.name);
+                        "type \"{}\" is not supported in service implementation", param.type));
                 if (first) first = false;
+            } else {
+                generate_session_param_collect(session_param_collect_instructions, destructor_instructions, param);
             }
-            if (stat.data_provider == prepared_statement_metadata::url_params)
-                uri_param_handler_def +=
-                    "else{raise_unexpected_url_param_error(__FUNCTION__, key, context); return false; } return true;}\n";
-            else
-                request_body_handler_def += "}";
-            struct_def += "};\n";
         }
-        prepared_statement_usage += fmt::format(
-            "result = prepared_statement_get_results_json(handler_{0}_prepared_statement, context,size);", id);
-        if (stat.is_composed)
-        {
-            // we don't need to use prepared statements in composed queries
-            prepared_statement_usage.clear();
-            prepared_statement_usage.append("void * result_obj = 0;void * result_obj_root = 0;");
-            int nested_index = 0;
-            std::unordered_set<std::string> data_item_names;
-            for (const auto & data_item : stat.data)
-            {
-                if (data_item_names.contains(data_item.name))
-                        throw std::runtime_error(fmt::format(R"(data item name "{}" cannot be repeated, in query "{}")", data_item.name, stat.name));
-                data_item_names.insert(data_item.name);
-                find_stmt(misc::throw_if_invalid_identifier(misc::second_if_empty(data_item.entity, stat.entity)), misc::second_if_empty(data_item.query, data_item.name), [&prepared_stat_array,&nested_index,&stat, &data_item, &prepared_statement_usage](const prepared_statement_metadata & target)
-                {
+        if (stat.data_provider == prepared_statement_metadata::url_params)
+            uri_param_handler_def +=
+                "else{raise_unexpected_url_param_error(__FUNCTION__, key, context); return false; "
+                "} return true;}\n";
+        else
+            request_body_handler_def += "}";
+        struct_def += "};\n";
+    }
+    prepared_statement_usage += fmt::format(
+        "result = prepared_statement_get_results_json(handler_{0}_prepared_statement, "
+        "context,size);",
+        id);
+    if (stat.is_composed) {
+        // we don't need to use prepared statements in composed queries
+        prepared_statement_usage.clear();
+        prepared_statement_usage.append("void * result_obj = 0;void * result_obj_root = 0;");
+        int nested_index = 0;
+        std::unordered_set<std::string> data_item_names;
+        for (const auto& data_item : stat.data) {
+            if (data_item_names.contains(data_item.name))
+                throw std::runtime_error(
+                    fmt::format(R"(data item name "{}" cannot be repeated, in query "{}")",
+                                data_item.name, stat.name));
+            data_item_names.insert(data_item.name);
+            find_stmt(
+                misc::throw_if_invalid_identifier(
+                    misc::second_if_empty(data_item.entity, stat.entity)),
+                misc::second_if_empty(data_item.query, data_item.name),
+                [&prepared_stat_array, &nested_index, &stat, &data_item,
+                 &prepared_statement_usage](const prepared_statement_metadata& target) {
                     prepared_statement_usage.append("{");
                     prepared_stat_array[nested_index] = (void*)&target.statement;
-                    prepared_statement_usage.append(fmt::format(R"(void * handler_{}_prepared_statement = ((void**)handler_{}_prepared_statement)[{}];)", target.index, stat.index, nested_index++));
+                    prepared_statement_usage.append(fmt::format(
+                        R"(void * handler_{}_prepared_statement = ((void**)handler_{}_prepared_statement)[{}];)",
+                        target.index, stat.index, nested_index++));
                     if (target.is_composed)
-                        throw std::runtime_error(fmt::format(R"(composed query "{}" cannot be used inside of another composed query "{}")", target.name, stat.name));
+                        throw std::runtime_error(fmt::format(
+                            R"(composed query "{}" cannot be used inside of another composed query "{}")",
+                            target.name, stat.name));
                     if (data_item.binds.size() != target.params.size())
-                        throw std::runtime_error(fmt::format(R"(data item "{}" in query "{}" has {} bindings than required for query "{}")", data_item.name, stat.name, data_item.binds.size() > target.params.size() ? "more" : "less", target.name));
-                    prepared_statement_usage.append(fmt::format("prepared_statement_reset(handler_{0}_prepared_statement);", target.index));
-                    for (const auto & target_param : target.params)
-                    {
+                        throw std::runtime_error(fmt::format(
+                            R"(data item "{}" in query "{}" has {} bindings than required for query "{}")",
+                            data_item.name, stat.name,
+                            data_item.binds.size() > target.params.size() ? "more" : "less",
+                            target.name));
+                    prepared_statement_usage.append(fmt::format(
+                        "prepared_statement_reset(handler_{0}_prepared_statement);", target.index));
+                    for (const auto& target_param : target.params) {
                         bool target_param_found = false;
-                        for (const auto & bind : data_item.binds)
-                        {
-                            if (bind.name == target_param.name)
-                            {
+                        for (const auto& bind : data_item.binds) {
+                            if (bind.name == target_param.name) {
                                 auto from = misc::second_if_empty(bind.from, bind.name);
                                 std::optional<struct param> binding_parameter;
-                                for (auto & stat_parameter : stat.params)
-                                {
-                                    if (stat_parameter.name == from)
-                                    {
-                                         binding_parameter = stat_parameter;
+                                for (auto& stat_parameter : stat.params) {
+                                    if (stat_parameter.name == from) {
+                                        binding_parameter = stat_parameter;
                                     }
                                 }
                                 if (not binding_parameter)
-                                    throw std::runtime_error(fmt::format(R"(bind "{}" in data item "{}" didn't match any param in query "{}")", bind.name, data_item.name, stat.name));
+                                    throw std::runtime_error(fmt::format(
+                                        R"(bind "{}" in data item "{}" didn't match any param in query "{}")",
+                                        bind.name, data_item.name, stat.name));
                                 if (binding_parameter->type != target_param.type)
-                                    throw std::runtime_error(fmt::format(R"(type mismatch between binding "{}" in data item "{}" and the correspondent param in query "{}")", bind.name, data_item.name, target.name));
-                                const std::string type = target_param.type == "const char *" ? "const_char" : target_param.type;
-                                prepared_statement_usage += fmt::format(R"(bind_statement_{}(handler_{}_prepared_statement, ":{}", input.{});)", type, target.index, target_param.name, binding_parameter->name);
+                                    throw std::runtime_error(fmt::format(
+                                        R"(type mismatch between binding "{}" in data item "{}" and the correspondent param in query "{}")",
+                                        bind.name, data_item.name, target.name));
+                                const std::string type = target_param.type == "const char *"
+                                                             ? "const_char"
+                                                             : target_param.type;
+                                prepared_statement_usage += fmt::format(
+                                    R"(bind_statement_{}(handler_{}_prepared_statement, ":{}", input.{});)",
+                                    type, target.index, target_param.name, binding_parameter->name);
                                 target_param_found = true;
                                 break;
                             }
                         }
-                        if (!target_param_found)
-                        {
-                            throw std::runtime_error(fmt::format(R"(param "{}" from query "{}" was not bound in data item "{}")", target_param.name, target.name, stat.name));
+                        if (!target_param_found) {
+                            throw std::runtime_error(fmt::format(
+                                R"(param "{}" from query "{}" was not bound in data item "{}")",
+                                target_param.name, target.name, stat.name));
                         }
                     }
-                    prepared_statement_usage.append(fmt::format(R"(prepared_statement_append_results_json(&result_obj, &result_obj_root,"{}",handler_{}_prepared_statement, context);)", data_item.name, target.index));
+                    prepared_statement_usage.append(fmt::format(
+                        R"(prepared_statement_append_results_json(&result_obj, &result_obj_root,"{}",handler_{}_prepared_statement, context);)",
+                        data_item.name, target.index));
                     prepared_statement_usage += "}";
                 });
-            }
-            prepared_statement_usage.append(R"(result = prepared_statement_finish_results_json(result_obj,size);)");
         }
-        std::string body_def;
-        if (stat.data_provider == prepared_statement_metadata::url_params and not stat.params.empty())
+        prepared_statement_usage.append(
+            R"(result = prepared_statement_finish_results_json(result_obj,size);)");
+    }
+    std::string body_def;
+    if (stat.data_provider == prepared_statement_metadata::url_params and not stat.params.empty()) {
+        if (normal_params) {
             body_def = fmt::format(
-                "struct _{0} input;{1}if(get_uri_params(route, uri_parameter_handler_{0}, &input, context)){{ {2} return result; }}",
-                id, constructor,
-                prepared_statement_usage + destructor);
-        else if (stat.data_provider == prepared_statement_metadata::request_body and not stat.params.empty())
+                "struct _{0} input;{1}if(get_uri_params(route, uri_parameter_handler_{0}, &input, "
+                "context)){{ {2} return result; }}",
+                id, constructor, prepared_statement_usage + destructor_instructions);
+        } else {
+            body_def = fmt::format("struct _{0} input;{1}{{ {2} return result; }}", id, constructor,
+                                   prepared_statement_usage + destructor_instructions);
+        }
+    } else if (stat.data_provider == prepared_statement_metadata::request_body and
+               not stat.params.empty())
+        if (normal_params) {
             body_def = fmt::format(
-                "struct _{0} input;{1}if(get_request_body(body, body_len, request_body_handler_{0}, &input, context)){{ {2} return result; }}",
-                id, constructor,
-                prepared_statement_usage + destructor);
-        else
-            body_def = constructor + prepared_statement_usage + destructor + "return result;";
-        return generated_implementation{
-            .entity = stat.entity,
-            .name = fmt::format("handler_{0}", id),
-            .route = stat.route,
-            .method = stat.method,
-            .code = prefix + struct_def + uri_param_handler_def + request_body_handler_def + fmt::format(
-                "const char * handler_{0}(void * handler_{0}_prepared_statement, const char* route, void* context, const char* body, int body_len, size_t * size){{const char * result = 0;{1}return 0;}}",
-                id, body_def) + suffix,
-            .prepared_statement = prepared_stat_array,
-            .is_composed = stat.is_composed,
-            .query_name = stat.name
-        };
+                "struct _{0} input;{1}if(get_request_body(body, body_len, "
+                "request_body_handler_{0}, "
+                "&input, context)){{ {2} return result; }}",
+                id, constructor, prepared_statement_usage + destructor_instructions);
+        } else {
+            body_def = fmt::format("struct _{0} input;{1}{{ {2} return result; }}", id, constructor,
+                                   prepared_statement_usage + destructor_instructions);
+        }
+
+    else
+        body_def = constructor + prepared_statement_usage + destructor_instructions + "return result;";
+
+    if (normal_params == 0) {
+        uri_param_handler_def.clear();
+        request_body_handler_def.clear();
     }
 
-     void find_stmt_or_throw(const std::vector<prepared_statement_metadata>& queries, const std::string & entity_name, const std::string & query_name, const std::function<void(const prepared_statement_metadata&)> callback)
-    {
-        for (const auto& query : queries)
-        {
-            if (query.entity == entity_name and query.name == query_name)
-            {
-                callback(query);
-                return;
-            }
-        }
-        throw std::runtime_error(fmt::format("query \"{}\" not found in entity \"{}\"", query_name, entity_name));
-    };
+    return generated_implementation{
+        .entity = stat.entity,
+        .name = fmt::format("handler_{0}", id),
+        .route = stat.route,
+        .method = stat.method,
+        .code = prefix + struct_def + uri_param_handler_def + request_body_handler_def +
+                fmt::format("const char * handler_{0}(void * handler_{0}_prepared_statement, const "
+                            "char* route, void* context, const char* body, int body_len, size_t * "
+                            "size){{const char * result = 0;{1}return 0;}}",
+                            id, body_def) +
+                suffix,
+        .prepared_statement = prepared_stat_array,
+        .is_composed = stat.is_composed,
+        .query_name = stat.name};
+}
 
-    std::pair<std::vector<generated_implementation>, std::string> init_services(
-        std::vector<prepared_statement_metadata>& queries)
-    {
-        std::string code = R"(
+void find_stmt_or_throw(const std::vector<prepared_statement_metadata>& queries,
+                        const std::string& entity_name, const std::string& query_name,
+                        const std::function<void(const prepared_statement_metadata&)> callback) {
+    for (const auto& query : queries) {
+        if (query.entity == entity_name and query.name == query_name) {
+            callback(query);
+            return;
+        }
+    }
+    throw std::runtime_error(
+        fmt::format("query \"{}\" not found in entity \"{}\"", query_name, entity_name));
+};
+
+std::pair<std::vector<generated_implementation>, std::string> init_services(
+    std::vector<prepared_statement_metadata>& queries) {
+    std::string code = R"(
 typedef unsigned long long size_t;
 typedef char bool;
 #define true 1
@@ -343,24 +431,46 @@ void prepared_statement_append_results_json(
     const char * section,
     void* prepared_statement,
     void * context);
+void collect_session_int(
+    int* field, 
+    const char * session_query,
+    int default_,
+    void* context);
+void collect_session_float(
+    float* field,
+    const char * session_query,
+    float default_,
+    void* context);
+void collect_session_char_const(
+    const char ** field,
+    const char * session_query,
+    char const* default_,
+    void* context);
+void collect_session_bool(
+    bool* field,
+    const char * session_query,
+    bool default_,
+    void* context);
 )";
-        std::vector<generated_implementation> impls;
-        // service svc1("default");
+    std::vector<generated_implementation> impls;
+    // service svc1("default");
 
-        const std::function<void(const std::string & en, const std::string & qn, std::function<void(const prepared_statement_metadata&)> cbk)> find_stmt = [&queries](const std::string & en, const std::string & qn, const std::function<void(const prepared_statement_metadata&)> & cbk)
-        {
+    const std::function<void(const std::string& en, const std::string& qn,
+                             std::function<void(const prepared_statement_metadata&)> cbk)>
+        find_stmt = [&queries](const std::string& en, const std::string& qn,
+                               const std::function<void(const prepared_statement_metadata&)>& cbk) {
             find_stmt_or_throw(queries, en, qn, cbk);
         };
-        for (auto& query : queries)
-        {
-            auto result = generate_implementation(query, find_stmt);
-            code += result.code;
-            result.code.clear();
-            impls.emplace_back(result);
-        }
-        // LOG(INFO) << "// code: ";
-        // std::cerr << code << std::endl;
-        // return std::move(svc1)
-        return std::make_pair<std::vector<generated_implementation>, std::string>(std::move(impls), std::move(code));
+    for (auto& query : queries) {
+        auto result = generate_implementation(query, find_stmt);
+        code += result.code;
+        result.code.clear();
+        impls.emplace_back(result);
     }
+    // LOG(INFO) << "// code: ";
+    // fmt::println("{}", code);
+    // return std::move(svc1)
+    return std::make_pair<std::vector<generated_implementation>, std::string>(std::move(impls),
+                                                                              std::move(code));
 }
+}  // namespace service

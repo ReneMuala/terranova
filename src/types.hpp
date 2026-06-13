@@ -99,6 +99,10 @@ struct param
 {
     std::string name;
     std::string type;
+    /// this is usally empty, witch means the parameters comes from the default paramater origin, consult @a data_provider_t 
+    std::string value;
+    /// use with @a value to provide a default value if the specified origin didnt have data
+    std::string default_;
     std::string _comments;
 };
 

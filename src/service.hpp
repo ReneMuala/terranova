@@ -1,4 +1,5 @@
 #pragma once
+#include <fstream>
 #include <string>
 #include "types.hpp"
 #include <list>
@@ -26,15 +27,22 @@ namespace service
             // tcc_set_lib_path(state, ".");
             tcc_set_options(state, "-nostdlib -Wall -Werror -bt 10");
             tcc_set_output_type(state, TCC_OUTPUT_MEMORY);
-            tcc_set_error_func(state, (void *)name.data(), error_handler);
+            tcc_set_error_func(state, (void *)this->name.c_str(), error_handler);
         }
 
-        void compile(const std::string &code)
+        void compile(const std::string &code, bool write)
         {
+            if(write){
+                std::ofstream file(name);
+                if (file.is_open()) {
+                    file << code;
+                    file.close();
+                }
+            }
             const auto result = tcc_compile_string(state, code.c_str());
             if (result != 0)
                 throw std::runtime_error(fmt::format("load failed on service: \"{}\"", code));
-            tcc_relocate(state, TCC_RELOCATE_AUTO);
+            tcc_relocate(state, TCC_RELOCATE_AUTO);            
         }
 
         void *peek(const std::string &name) const
