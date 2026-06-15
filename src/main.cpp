@@ -702,6 +702,27 @@ void collect_session_bool(bool *field, const char *session_query, bool default_,
     }
 }
 
+enum session_role {
+    not_owned = 0,
+    owned = 1
+};
+
+constexpr int ROLE_PREFIX_SIZE = 6; // #role.
+void collect_role_bool(bool *field, const char *role_query, bool default_, void *context){
+    bool success = false;
+    drogon::HttpRequest *ctx = (drogon::HttpRequest *)context;
+    if (ctx and ctx->session()) {
+        if (auto data = ctx->session()->getOptional<session_role>(
+                std::string(role_query + ROLE_PREFIX_SIZE))) {
+            success = true;
+            *field = data.value();
+        }
+    }
+    if (not success) {
+        *field = default_;
+    }
+}
+
 namespace srv {
 void init_listeners(const std::vector<application> &apps, const std::string &select_profile) {
     bool registered = false;
@@ -905,15 +926,15 @@ struct session_token {
     std::string value;
 };
 
-void fetch_role_value(const std::string & name, handler_t handler, void * prepared_stat, void * context, void * req_context){
+bool fetch_role_value(const std::string &name, handler_t handler, void *prepared_stat,
+                      void *context, void *req_context) {
     size_t size;
-    char* result = handler(prepared_stat, "/", context, req_context, "...", 0, &size);
-    
-    fmt::println("{} -> {}", name, result);
-
-    if(result){
+    char *result = handler(prepared_stat, "/", context, req_context, "...", 0, &size);
+    const bool owned = size == 58 and result[18] == '1';
+    if (result) {
         free(result);
     }
+    return owned;
 }
 
 void server_mode(const std::string filename, const std::string profile, bool write_c_file) {
@@ -967,12 +988,16 @@ void server_mode(const std::string filename, const std::string profile, bool wri
     service_layer.push("collect_session_float", (void *)collect_session_float);
     service_layer.push("collect_session_const_char", (void *)collect_session_const_char);
     service_layer.push("collect_session_bool", (void *)collect_session_bool);
+    service_layer.push("collect_role_bool", (void *)collect_role_bool);
     service_layer.compile(init_result.second, write_c_file);
     LOG(INFO) << fmt::format("generated & compiled {} api services successfully",
                              init_result.first.size());
     auto size = init_result.first.size();
 
-    std::list<std::reference_wrapper<generated_implementation>> role_set;
+    std::list<std::reference_wrapper<generated_implementation>> roles_list;
+
+    std::function<handler_t(const std::string &name)> service_handler_getter =
+        [&service_layer](const std::string &name) { return (handler_t)service_layer.peek(name); };
 
     for (size_t i = 0; i < size; i++) {
         generated_implementation &impl = init_result.first[i];
@@ -980,17 +1005,22 @@ void server_mode(const std::string filename, const std::string profile, bool wri
         service_layer.push("get_request_body", (void *)get_request_body);
         handler_t handler;
         void *prepared_stat = impl.prepared_statement;
-        if(prepared_stat and impl.kind != statement_kind_t::role){ // only seek for handler when dealing with implementations that have prepared_statements (* except logout) and not roles
-            handler = (handler_t)service_layer.peek(impl.name);
+        if (prepared_stat and
+            impl.kind != statement_kind_t::role) { // only seek for handler when dealing with
+                                                   // implementations that have prepared_statements
+                                                   // (* except logout) and not roles
+            handler = service_handler_getter(impl.name);
         }
+
         switch (impl.kind) {
         case statement_kind_t::role:
-            role_set.emplace_back(impl);
-        break;
+            roles_list.emplace_back(impl);
+            break;
         case statement_kind_t::login:
             drogon::app().registerHandler(
                 impl.route,
-                [handler, prepared_stat, &role_set](const drogon::HttpRequestPtr &req, Callback &&callback) {
+                [handler, prepared_stat, &roles_list,
+                 &service_handler_getter](const drogon::HttpRequestPtr &req, Callback &&callback) {
                     auto resp = drogon::HttpResponse::newHttpResponse();
                     resp->setContentTypeCode(drogon::ContentType::CT_APPLICATION_JSON);
                     size_t _r0_size = 0;
@@ -1004,7 +1034,8 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                             if (count == 1) {
                                 resp->setBody(_r0);
                                 req->session()->insert("timestamp", (int)time(nullptr));
-                                req->session()->insert("token", session_token(req->session()->sessionId()));
+                                req->session()->insert("token",
+                                                       session_token(req->session()->sessionId()));
                                 {
                                     auto data =
                                         yyjson_arr_get_first(yyjson_obj_get(input_root, "data"));
@@ -1043,11 +1074,11 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                                         }
                                     }
                                 }
-                                // req->session()->insert("name", std::string("random name"));
-                                // req->session()->insert("roles", std::unordered_set<std::string>());
-                                // auto session = drogon::utils::getUuid(false);
-                                for(auto & r : role_set){
-                                    fmt::println("-> {}", r.get().name);
+                                for (auto &ref : roles_list) {
+                                    auto &r = ref.get();
+                                    const auto role_handler = service_handler_getter(r.name);
+                                    const bool role_owned = fetch_role_value(r.query_name, role_handler, r.prepared_statement,(void *)resp.get(), (void *)req.get());
+                                    req->session()->insert(r.query_name, session_role(role_owned));
                                 }
                             } else {
                                 resp->setStatusCode(drogon::k404NotFound);
@@ -1066,7 +1097,7 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                 [](const drogon::HttpRequestPtr &req, Callback &&callback) {
                     auto resp = drogon::HttpResponse::newHttpResponse();
                     resp->setContentTypeCode(drogon::ContentType::CT_NONE);
-                    if(req->session()->getOptional<session_token>("token")){
+                    if (req->session()->getOptional<session_token>("token")) {
                         req->session()->clear();
                     } else {
                         resp->setStatusCode(drogon::k401Unauthorized);
@@ -1089,9 +1120,7 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                             resp->setStatusCode(drogon::k401Unauthorized);
                             callback(resp);
                             return;
-                        } else if (not req->session()
-                                           ->get<std::unordered_set<std::string>>("roles")
-                                           .contains(access)) {
+                        } else if (req->session()->get<session_role>(access) == session_role::not_owned) {
                             resp->setContentTypeCode(drogon::ContentType::CT_NONE);
                             resp->setStatusCode(drogon::k403Forbidden);
                             callback(resp);
@@ -1110,7 +1139,7 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                 {to_drogon_http_method(impl.method)});
         } break;
         default: // role statements do not have endpoints
-        break;
+            break;
         }
     }
     auto processed_templates = vws::init_views(apps, init_result.first);
@@ -1160,9 +1189,7 @@ void server_mode(const std::string filename, const std::string profile, bool wri
     }
     apps.clear();
     // hks::test();
-    drogon::app()
-        .setServerHeaderField("terranova@drogon/"+drogon::getVersion())
-        .run();
+    drogon::app().setServerHeaderField("terranova@drogon/" + drogon::getVersion()).run();
     service::free_all_tracked_malloc();
 }
 

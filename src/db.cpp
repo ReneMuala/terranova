@@ -251,45 +251,6 @@ prepared_statement_metadata init_stmt_login(const SQLite::Database &database, co
                                        .kind = statement_kind_t::login};
 }
 
-static const auto check_regex_regex = std::regex(">|<");
-
-prepared_statement_metadata init_stmt_role_set(const SQLite::Database &database,
-                                               const entity &entity, unsigned long long index,
-                                               const auth &auth) {
-    std::string stmt = "SELECT /* BEGIN RULESET */";
-    // check for role count
-    for (auto rl : auth.role) {
-        if (not rl.sql.empty()) {
-            stmt.append(fmt::format(
-                "({1}) as {0}", misc::throw_if_invalid_identifier(misc::tolower(rl.name)), rl.sql));
-        } else if (not rl.when.empty() and rl.is.empty()) {
-            throw std::runtime_error(
-                fmt::format("rule \"{}\" as field \"when\" but no field \"is\"", rl.name));
-        } else if (rl.is.empty() and not rl.when.empty()) {
-            throw std::runtime_error(
-                fmt::format("rule \"{}\" as field \"is\" but no field \"when\"", rl.name));
-        } else {
-            stmt.append(fmt::format("({1} = {2}) as {0},",
-                                    misc::throw_if_invalid_identifier(misc::tolower(rl.name)),
-                                    rl.when, rl.is));
-        }
-    }
-    LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
-    return prepared_statement_metadata{.name = "login",
-                                       .entity = entity.name,
-                                       .route = misc::to_route("auth/login"),
-                                       .method = "post",
-                                       .statement = SQLite::Statement(database, stmt),
-                                       .params =
-                                           {
-                                               param{"identity", get_c_type("string")},
-                                               param{"secret", get_c_type("string")},
-                                           },
-                                       .data_provider = prepared_statement_metadata::request_body,
-                                       .is_composed = false,
-                                       .index = index};
-}
-
 prepared_statement_metadata init_stmt_logout(const SQLite::Database &database, const entity &entity,
                                              unsigned long long index, const auth &auth) {
     auto stmt = fmt::format("/*LOGOUT OPAQUE QUERY*/ SELECT 1;");
@@ -306,21 +267,50 @@ prepared_statement_metadata init_stmt_logout(const SQLite::Database &database, c
                                        .kind = statement_kind_t::logout};
 }
 
+#define ROLE_THROW_WHEN_EMPTY(X, Y)                                                                \
+    if (X.empty())                                                                                 \
+    throw std::runtime_error(                                                                      \
+        fmt::format("field \"{}\" cannot be empty because {} in role {}", #X, Y, role.name))
+
+#define ROLE_THROW_WHEN_NOT_EMPTY(X, Y)                                                            \
+    if (not X.empty())                                                                             \
+    throw std::runtime_error(                                                                      \
+        fmt::format("field \"{}\" must be empty because {} in role {}", #X, Y, role.name))
+
 prepared_statement_metadata init_stmt_role(const SQLite::Database &database, const entity &entity,
-                                           unsigned long long index, const struct role &role) {
-    auto stmt = std::regex_replace(role.sql, std::regex(R"(\{table\})"), entity.name);
-    std::vector<param> stat_params = validate_and_get_stat_params(role.params, stmt, role.name);
-    LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
-    return prepared_statement_metadata{.name = role.name,
-                                       .entity = entity.name,
-                                       .route = role.name,
-                                       .method = "(role)",
-                                       .statement = SQLite::Statement(database, stmt),
-                                       .params = stat_params,
-                                       .is_composed = false,
-                                       .index = index,
-                                       .access = "private",
-                                       .kind = statement_kind_t::role};
+                                           unsigned long long index, const struct auth &auth,
+                                           const struct role &role) {
+    try {
+        constexpr auto reseved_param_name = "identity";
+        for (auto &p : role.params) {
+            if (p.name == reseved_param_name) {
+                throw std::runtime_error(fmt::format(
+                    "param name \"{}\" is reserved for internal use.", reseved_param_name));
+            }
+        }
+        auto stmt =
+            std::regex_replace(fmt::format("SELECT COUNT(*) AS owned FROM {{table}} WHERE /* "
+                                           "role.where*/ {} AND {{table}}.{} = :identity LIMIT 1",
+                                           role.where, auth.identity),
+                               std::regex(R"(\{table\})"), entity.name);
+        auto params = role.params;
+        params.push_back(param{
+            .name = "identity", .type = "string", .value = "#session." + auth.identity});
+        std::vector<param> stat_params = validate_and_get_stat_params(params, stmt, role.name);
+        LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
+        return prepared_statement_metadata{.name = role.name,
+                                           .entity = entity.name,
+                                           .route = role.name,
+                                           .method = "(role)",
+                                           .statement = SQLite::Statement(database, stmt),
+                                           .params = stat_params,
+                                           .is_composed = false,
+                                           .index = index,
+                                           .access = "private",
+                                           .kind = statement_kind_t::role};
+    } catch (const std::exception &ex) {
+        throw std::runtime_error(fmt::format("{} in role \"{}\"", ex.what(), role.name));
+    }
 }
 
 inline std::string with_comma_suffix(const std::string &name) { return name + ","; }
@@ -499,13 +489,13 @@ void check_query_param_types(const std::vector<param> &params) {
     }
 }
 
-inline void validate_costom_query_parameter(const param &param) {
+inline void validate_custom_query_parameter(const param &param) {
     if (param.value.empty() and not param.default_.empty())
         throw std::runtime_error(
             fmt::format("param \"{}\" has \"default\" but no \"value\" specified", param.name));
-    if (not param.value.empty() and not param.value.starts_with("#session."))
+    if (not param.value.empty() and not(param.value.starts_with("#session.") or param.value.starts_with("#role.")))
         throw std::runtime_error(
-            fmt::format("param \"{}\" value \"{}\" is not supported (only #session.*)", param.name,
+            fmt::format("param \"{}\" value \"{}\" is not supported (only #session.* or #role.*)", param.name,
                         param.value));
 }
 
@@ -528,7 +518,7 @@ inline std::vector<param> validate_and_get_stat_params(const std::vector<param> 
         if (not detected_params.contains(param.name))
             throw std::runtime_error(
                 fmt::format("param \"{}\" has no usage in query \"{}\"", param.name, name));
-        validate_costom_query_parameter(param);
+        validate_custom_query_parameter(param);
         stat_params.emplace_back(misc::throw_if_invalid_identifier(param.name),
                                  get_c_type(param.type), param.value, param.default_,
                                  param._comments);
@@ -569,7 +559,7 @@ init_stmt_custom_composed(const SQLite::Database &database, const entity &entity
     std::vector<param> stat_params;
     LOG(INFO) << fmt::format("prepare custom statement (\"{}\") \"{}\"", name, "<data>");
     for (const auto &param : params) {
-        validate_costom_query_parameter(param);
+        validate_custom_query_parameter(param);
         stat_params.emplace_back(misc::throw_if_invalid_identifier(param.name),
                                  get_c_type(param.type), param._comments);
         bool has_match = false;

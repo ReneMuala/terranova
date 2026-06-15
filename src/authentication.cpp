@@ -17,7 +17,7 @@ prepared_statement_metadata init_stmt_login(const SQLite::Database &database, co
 prepared_statement_metadata init_stmt_logout(const SQLite::Database &database, const entity &entity,
                                              unsigned long long index, const auth &auth);
 prepared_statement_metadata init_stmt_role(const SQLite::Database &database, const entity &entity,
-                                           unsigned long long index, const struct role &role);
+                                           unsigned long long index, const struct auth &auth, const struct role &role);
 } // namespace db
 
 #define THROW_WHEN_EMPTY(X)                                                                        \
@@ -51,7 +51,7 @@ bool authentication::init_auth(
                                                  global_statement_index++, auth));
             for (const auto &r : auth.role) {
                 stats.push_back(db::init_stmt_role(db::get_database(app), provider,
-                                                   global_statement_index++, r));
+                                                   global_statement_index++, auth, r));
             }
             return true;
         } catch (std::out_of_range &e) {

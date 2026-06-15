@@ -240,9 +240,7 @@ struct generated_implementation {
 
 struct role {
     std::string name;
-    std::string when;
-    std::string is;
-    std::string sql;
+    std::string where;
     std::vector<struct param> params;
 };
 

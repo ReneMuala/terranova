@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <functional>
 #include <regex>
+#include <stdexcept>
 #include <unordered_set>
 
 #include "fmt/base.h"
@@ -91,6 +92,19 @@ inline void generate_session_param_collect(std::string &session_param_collect_in
                         __FUNCTION__));
 }
 
+inline void generate_role_param_collect(std::string &session_param_collect_instructions,
+                                           std::string &destructor_instructions,
+                                           const param &param) {
+    if (param.type == "bool") {
+        session_param_collect_instructions.append(
+            fmt::format(R"(collect_role_bool((bool*)&input.{0}, "{1}", {2}, req_context);)",
+                        param.name, param.value, misc::second_if_empty(param.default_, "false")));
+    } else
+        throw std::runtime_error(
+            fmt::format("type \"{}\" is not supported in service implementation ({})", param.type,
+                        __FUNCTION__));
+}
+
 inline void generate_url_param_handler(std::string &uri_param_handler_def_instructions,
                                        const param &param) {
     if (param.type == "const char *") {
@@ -144,13 +158,15 @@ typedef const std::function<void(
     find_statement_callback;
 
 generated_implementation generate_implementation_for_stat(const prepared_statement_metadata &stat,
-                                                      find_statement_callback &find_stmt) {
+                                                          find_statement_callback &find_stmt) {
     unsigned long long id = stat.index;
     std::string struct_def;
     std::string uri_param_handler_def_instructions;
     std::string output_handler_def;
     std::string request_body_handler_def_instructions;
     std::string session_param_collect_instructions;
+    std::string session_param_raw_collect_instructions;
+    std::string session_param_role_collect_instructions;
     std::string destructor_instructions, constructor;
     std::string prepared_statement_usage;
     void **prepared_stat_array =
@@ -200,9 +216,14 @@ generated_implementation generate_implementation_for_stat(const prepared_stateme
                 }
                 if (first)
                     first = false;
-            } else {
+            } else if(param.value.starts_with("#session.")) {
                 generate_session_param_collect(session_param_collect_instructions,
                                                destructor_instructions, param);
+            } else if(param.value.starts_with("#role.")) {
+                generate_role_param_collect(session_param_role_collect_instructions,
+                                               destructor_instructions, param);
+            } else {
+                throw std::runtime_error(fmt::format("unsupported param value \"{}\"", param.value));
             }
         }
         if (stat.data_provider == prepared_statement_metadata::url_params)
@@ -298,6 +319,8 @@ generated_implementation generate_implementation_for_stat(const prepared_stateme
     }
     std::string body_def;
     constructor.append(session_param_collect_instructions);
+    constructor.append(session_param_raw_collect_instructions);
+    constructor.append(session_param_role_collect_instructions);
     if (stat.data_provider == prepared_statement_metadata::url_params and not stat.params.empty()) {
         if (normal_params) {
             body_def = fmt::format(
@@ -351,16 +374,15 @@ generated_implementation generate_implementation_for_stat(const prepared_stateme
 
 inline generated_implementation generate_implementation(const prepared_statement_metadata &stat,
                                                         find_statement_callback &find_stmt) {
-    if (stat.kind == statement_kind_t::logout ) {
-        return  generated_implementation{
-        .entity = stat.entity,
-        .name = stat.name,
-        .route = stat.route,
-        .method = stat.method,
-        .query_name = stat.name,
-        .kind = stat.kind};
+    if (stat.kind == statement_kind_t::logout) {
+        return generated_implementation{.entity = stat.entity,
+                                        .name = stat.name,
+                                        .route = stat.route,
+                                        .method = stat.method,
+                                        .query_name = stat.name,
+                                        .kind = stat.kind};
     } else {
-        return generate_implementation_for_stat(stat,find_stmt);
+        return generate_implementation_for_stat(stat, find_stmt);
     }
 }
 
@@ -494,6 +516,11 @@ void collect_session_const_char(
 void collect_session_bool(
     bool* field,
     const char * session_query,
+    bool default_,
+    void* context);
+void collect_role_bool(
+    bool* field,
+    const char * role_query,
     bool default_,
     void* context);
 )";
