@@ -1,5 +1,5 @@
 # Set the base style rule
-BasedOnStyle: Google
+BasedOnStyle: LLVM
 
 # Target programming language
 Language: Cpp

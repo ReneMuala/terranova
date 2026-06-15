@@ -3,21 +3,19 @@
 //
 
 #pragma once
+#include <SQLiteCpp/SQLiteCpp.h>
+#include <optional>
 #include <string>
 #include <vector>
-#include <optional>
-#include <SQLiteCpp/SQLiteCpp.h>
 
-struct file_options
-{
+struct file_options {
     std::string accept = "*";
     std::string folder = ".";
     int max_size = 1024 * 1024 * 10;
     std::string _comments;
 };
 
-struct field
-{
+struct field {
     std::string name;
     std::string type;
     bool optional = false;
@@ -26,8 +24,7 @@ struct field
     std::string _comments;
 };
 
-struct has_many
-{
+struct has_many {
     std::string name;
     std::string as;
     std::string on_delete = "cascade";
@@ -36,8 +33,7 @@ struct has_many
     std::string _comments;
 };
 
-struct has_one
-{
+struct has_one {
     std::string name;
     std::string as;
     std::string on_delete = "cascade";
@@ -46,8 +42,7 @@ struct has_one
     std::string _comments;
 };
 
-struct belongs_to
-{
+struct belongs_to {
     std::string name;
     std::string as;
     std::string on = "id";
@@ -55,15 +50,13 @@ struct belongs_to
     std::string _comments;
 };
 
-struct pk
-{
+struct pk {
     std::string name;
     std::string type;
     std::string _comments;
 };
 
-struct schema
-{
+struct schema {
     std::optional<struct pk> pk;
     std::vector<struct field> fields;
     std::vector<struct has_one> has_one;
@@ -72,49 +65,44 @@ struct schema
     std::string _comments;
 };
 
-struct before
-{
+struct before {
     std::string name;
     std::string script;
     std::string fn;
     std::string _comments;
 };
 
-struct after
-{
+struct after {
     std::string name;
     std::string script;
     std::string fn;
     std::string _comments;
 };
 
-struct hooks
-{
+struct hooks {
     std::vector<struct before> before;
     std::vector<struct after> after;
     std::string _comments;
 };
 
-struct param
-{
+struct param {
     std::string name;
     std::string type;
-    /// this is usally empty, witch means the parameters comes from the default paramater origin, consult @a data_provider_t 
+    /// this is usally empty, witch means the parameters comes from the default paramater origin,
+    /// consult @a data_provider_t
     std::string value;
     /// use with @a value to provide a default value if the specified origin didnt have data
     std::string default_;
     std::string _comments;
 };
 
-struct bind
-{
+struct bind {
     std::string name;
     std::string from;
     std::string _comments;
 };
 
-struct data
-{
+struct data {
     std::string name;
     std::string query;
     std::string entity;
@@ -122,8 +110,7 @@ struct data
     std::string _comments;
 };
 
-struct get
-{
+struct get {
     std::string name;
     std::string sql;
     std::vector<struct param> params;
@@ -132,8 +119,7 @@ struct get
     unsigned long long _index;
 };
 
-struct post
-{
+struct post {
     std::string name;
     std::string sql;
     std::vector<struct param> params;
@@ -142,8 +128,7 @@ struct post
     unsigned long long _index;
 };
 
-struct put
-{
+struct put {
     std::string name;
     std::string sql;
     std::vector<struct param> params;
@@ -152,8 +137,7 @@ struct put
     unsigned long long _index;
 };
 
-struct delete_
-{
+struct delete_ {
     std::string name;
     std::string sql;
     std::vector<struct param> params;
@@ -162,8 +146,7 @@ struct delete_
     unsigned long long _index;
 };
 
-struct queries
-{
+struct queries {
     std::vector<struct get> get;
     std::vector<struct post> post;
     std::vector<struct put> put;
@@ -171,22 +154,19 @@ struct queries
     std::string _comments;
 };
 
-struct for_
-{
+struct for_ {
     std::string name;
     std::string route;
     std::string query;
     std::string _comments;
 };
 
-struct template_set
-{
+struct template_set {
     std::vector<struct for_> for_;
     std::string _comments;
 };
 
-struct template_
-{
+struct template_ {
     std::string name;
     std::string query;
     std::string entity;
@@ -196,16 +176,14 @@ struct template_
     std::string _comments;
 };
 
-struct views
-{
+struct views {
     std::vector<struct template_> template_;
     // disable template_set for now
     // std::vector<struct template_set> template_set;
     std::string _comments;
 };
 
-struct entity
-{
+struct entity {
     std::string name;
     struct schema schema;
     bool protected_ = false;
@@ -217,11 +195,16 @@ struct entity
     unsigned long long _4x_padded_index;
 };
 
+enum statement_kind_t {
+    business,
+    login,
+    logout,
+    role,
+};
+
 // internal, not specified via kdl
-struct prepared_statement_metadata
-{
-    enum data_provider_t
-    {
+struct prepared_statement_metadata {
+    enum data_provider_t {
         url_params,
         request_body,
     };
@@ -238,20 +221,21 @@ struct prepared_statement_metadata
     std::vector<struct data> data;
     unsigned long long index;
     std::string access;
+    statement_kind_t kind = statement_kind_t::business;
 };
 
 // internal, not specified via kdl
-struct generated_implementation
-{
+struct generated_implementation {
     std::string entity;
     std::string name;
     std::string route;
     std::string method;
     std::string code;
-    void* prepared_statement{};
+    void *prepared_statement{};
     bool is_composed = false;
     std::string query_name;
     std::string access;
+    statement_kind_t kind = statement_kind_t::business;
 };
 
 struct role {
@@ -259,10 +243,10 @@ struct role {
     std::string when;
     std::string is;
     std::string sql;
+    std::vector<struct param> params;
 };
 
-struct auth
-{
+struct auth {
     std::string provider;
     std::string identity;
     std::string secret;
@@ -273,16 +257,14 @@ struct auth
     std::vector<struct role> role;
 };
 
-struct rpc_
-{
+struct rpc_ {
     std::string name;
     std::string address = "127.0.0.1";
     int port;
     std::string _comments;
 };
 
-struct listen
-{
+struct listen {
     std::string address = "0.0.0.0";
     std::string domain = "localhost";
     std::string cert;
@@ -291,8 +273,7 @@ struct listen
     std::string _comments;
 };
 
-struct profile
-{
+struct profile {
     std::string name;
     bool default_ = false;
     std::vector<struct rpc_> rpc;
@@ -300,8 +281,7 @@ struct profile
     std::string _comments;
 };
 
-struct application
-{
+struct application {
     std::string name;
     std::string version = "1.0.0";
     std::string email = "example@terranova.com";

@@ -41,7 +41,7 @@ namespace service
             }
             const auto result = tcc_compile_string(state, code.c_str());
             if (result != 0)
-                throw std::runtime_error(fmt::format("load failed on service: \"{}\"", code));
+                throw std::runtime_error(fmt::format("load failed in service \"{}\"", this->name));
             tcc_relocate(state, TCC_RELOCATE_AUTO);            
         }
 
@@ -51,7 +51,7 @@ namespace service
             {
                 void *result = tcc_get_symbol(state, name.c_str());
                 if (not result)
-                    throw std::runtime_error(fmt::format("symbol not found: \"{}\"", name));
+                    throw std::runtime_error(fmt::format("no such symbol \"{}\" in service \"{}\" ", name, this->name));
                 return result;
             }
             return nullptr;
