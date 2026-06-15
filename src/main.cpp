@@ -638,13 +638,12 @@ std::string get_error_page(const std::string &location, const std::string &descr
 
 #include <drogon/drogon.h>
 
-constexpr int SESSION_PREFIX_SIZE = 9; // #session.
 void collect_session_int(int *field, const char *session_query, int default_, void *context) {
     bool success = false;
     drogon::HttpRequest *ctx = (drogon::HttpRequest *)context;
     if (ctx and ctx->session()) {
         if (auto data = ctx->session()->getOptional<int>(
-                std::string(session_query + SESSION_PREFIX_SIZE))) {
+                std::string(session_query))) {
             success = true;
             *field = data.value();
         }
@@ -661,7 +660,7 @@ void collect_session_float(float *field, const char *session_query, float defaul
     drogon::HttpRequest *ctx = (drogon::HttpRequest *)context;
     if (ctx and ctx->session()) {
         if (auto data = ctx->session()->getOptional<float>(
-                std::string(session_query + SESSION_PREFIX_SIZE))) {
+                std::string(session_query))) {
             success = true;
             *field = data.value();
         }
@@ -677,7 +676,7 @@ void collect_session_const_char(const char **field, const char *session_query, c
     drogon::HttpRequest *ctx = (drogon::HttpRequest *)context;
     if (ctx and ctx->session()) {
         if (auto data = ctx->session()->getOptional<std::string>(
-                std::string(session_query + SESSION_PREFIX_SIZE))) {
+                std::string(session_query))) {
             success = true;
             *field = fake_strdup(data.value().c_str());
         }
@@ -692,7 +691,7 @@ void collect_session_bool(bool *field, const char *session_query, bool default_,
     drogon::HttpRequest *ctx = (drogon::HttpRequest *)context;
     if (ctx and ctx->session()) {
         if (auto data = ctx->session()->getOptional<bool>(
-                std::string(session_query + SESSION_PREFIX_SIZE))) {
+                std::string(session_query))) {
             success = true;
             *field = data.value();
         }
@@ -707,13 +706,12 @@ enum session_role {
     owned = 1
 };
 
-constexpr int ROLE_PREFIX_SIZE = 6; // #role.
 void collect_role_bool(bool *field, const char *role_query, bool default_, void *context){
     bool success = false;
     drogon::HttpRequest *ctx = (drogon::HttpRequest *)context;
     if (ctx and ctx->session()) {
         if (auto data = ctx->session()->getOptional<session_role>(
-                std::string(role_query + ROLE_PREFIX_SIZE))) {
+                std::string(role_query))) {
             success = true;
             *field = data.value();
         }
@@ -1033,7 +1031,7 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                             size_t count = yyjson_get_uint(yyjson_obj_get(input_root, "count"));
                             if (count == 1) {
                                 resp->setBody(_r0);
-                                req->session()->insert("timestamp", (int)time(nullptr));
+                                req->session()->insert("#session.timestamp", (int)time(nullptr));
                                 req->session()->insert("token",
                                                        session_token(req->session()->sessionId()));
                                 {
@@ -1045,26 +1043,27 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                                     yyjson_val *key, *val;
                                     while ((key = yyjson_obj_iter_next(&iter))) {
                                         val = yyjson_obj_iter_get_val(key);
+                                        auto final_key = std::string("#session.")+yyjson_get_str(key); 
                                         switch (yyjson_get_tag(val)) {
                                         case YYJSON_TYPE_RAW | YYJSON_SUBTYPE_NONE:
                                         case YYJSON_TYPE_STR | YYJSON_SUBTYPE_NONE:
                                         case YYJSON_TYPE_STR | YYJSON_SUBTYPE_NOESC:
                                             req->session()->insert(
-                                                yyjson_get_str(key),
+                                                final_key.c_str(),
                                                 std::string(yyjson_get_str(val)));
                                             break;
                                         case YYJSON_TYPE_BOOL | YYJSON_SUBTYPE_TRUE:
                                         case YYJSON_TYPE_BOOL | YYJSON_SUBTYPE_FALSE:
-                                            req->session()->insert(yyjson_get_str(key),
+                                            req->session()->insert(final_key.c_str(),
                                                                    yyjson_get_bool(val));
                                             break;
                                         case YYJSON_TYPE_NUM | YYJSON_SUBTYPE_UINT:
                                         case YYJSON_TYPE_NUM | YYJSON_SUBTYPE_SINT:
-                                            req->session()->insert(yyjson_get_str(key),
+                                            req->session()->insert(final_key.c_str(),
                                                                    yyjson_get_int(val));
                                             break;
                                         case YYJSON_TYPE_NUM | YYJSON_SUBTYPE_REAL:
-                                            req->session()->insert(yyjson_get_str(key),
+                                            req->session()->insert(final_key.c_str(),
                                                                    (float)yyjson_get_real(val));
                                             break;
                                             // not supported
@@ -1078,7 +1077,8 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                                     auto &r = ref.get();
                                     const auto role_handler = service_handler_getter(r.name);
                                     const bool role_owned = fetch_role_value(r.query_name, role_handler, r.prepared_statement,(void *)resp.get(), (void *)req.get());
-                                    req->session()->insert(r.query_name, session_role(role_owned));
+                                    const auto final_key = "#role."+r.query_name;
+                                    req->session()->insert(final_key, session_role(role_owned));
                                 }
                             } else {
                                 resp->setStatusCode(drogon::k404NotFound);
