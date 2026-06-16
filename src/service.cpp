@@ -369,10 +369,13 @@ generated_implementation generate_implementation_for_stat(const prepared_stateme
         .prepared_statement = prepared_stat_array,
         .is_composed = stat.is_composed,
         .query_name = stat.name,
+        .access = stat.access,
         .kind = stat.kind};
+
+        // return std::move(result);
 }
 
-inline generated_implementation generate_implementation(const prepared_statement_metadata &stat,
+generated_implementation generate_implementation(const prepared_statement_metadata &stat,
                                                         find_statement_callback &find_stmt) {
     if (stat.kind == statement_kind_t::logout) {
         return generated_implementation{.entity = stat.entity,
@@ -534,7 +537,7 @@ void collect_role_bool(
                        const std::function<void(const prepared_statement_metadata &)> &cbk) {
                 find_stmt_or_throw(queries, en, qn, cbk);
             };
-    for (auto &query : queries) {
+    for (const auto &query : queries) {
         auto result = generate_implementation(query, find_stmt);
         code += result.code;
         result.code.clear();

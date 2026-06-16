@@ -1108,19 +1108,22 @@ void server_mode(const std::string filename, const std::string profile, bool wri
             break;
         case statement_kind_t::business: {
             std::string access = impl.access;
-            bool is_not_public = not(access.empty() or access == "public");
+            bool is_not_public = not(access.empty());
+            if(is_not_public){
+                access = "#role."+access; // prefix it so it is searchable
+            }
             drogon::app().registerHandler(
                 impl.route,
                 [is_not_public, access, handler, prepared_stat](const drogon::HttpRequestPtr &req,
                                                                 Callback &&callback) {
                     auto resp = drogon::HttpResponse::newHttpResponse();
                     if (is_not_public) {
-                        if (not req->session()) {
+                        if (not req->session()->getOptional<session_token>("token")) {
                             resp->setContentTypeCode(drogon::ContentType::CT_NONE);
                             resp->setStatusCode(drogon::k401Unauthorized);
                             callback(resp);
                             return;
-                        } else if (req->session()->get<session_role>(access) == session_role::not_owned) {
+                        } else if (req->session()->get<session_role>(access) != session_role::owned) {
                             resp->setContentTypeCode(drogon::ContentType::CT_NONE);
                             resp->setStatusCode(drogon::k403Forbidden);
                             callback(resp);
