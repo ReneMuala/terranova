@@ -50,7 +50,8 @@ bool authentication::init_auth(
             stats.push_back(db::init_stmt_logout(db::get_database(app), provider,
                                                  global_statement_index++, auth));
             for (const auto &r : auth.role) {
-                stats.push_back(db::init_stmt_role(db::get_database(app), provider,
+                auto & db = db::get_database(app);
+                stats.push_back(db::init_stmt_role(db, provider,
                                                    global_statement_index++, auth, r));
             }
             return true;

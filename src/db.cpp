@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "SQLiteCpp/Database.h"
 #include "authentication.hpp"
 #include "fmt/base.h"
 #include "fmt/format.h"
@@ -639,10 +640,18 @@ void sql_custom_fetch(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
 void sql_custom_timestamp(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
     sqlite3_result_int(ctx, (int)time(nullptr));
 }
-// timestamp
-SQLite::Database get_database(const struct application &app) {
-    return SQLite::Database(fmt::format("{}.sqlite", misc::throw_if_invalid_identifier(app.name)),
-                            SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
+// owns connections for the whole program lifetime
+static std::unordered_map<std::string, SQLite::Database> g_databases;
+
+SQLite::Database& get_database(const struct application &app) {
+    auto name = misc::throw_if_invalid_identifier(app.name);
+    auto it = g_databases.find(name);
+    if (it == g_databases.end()) {
+        it = g_databases.emplace(name,
+            SQLite::Database(fmt::format("{}.sqlite", name),
+                              SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE)).first;
+    }
+    return it->second;
 }
 
 std::tuple<std::vector<prepared_statement_metadata>, bool>
@@ -651,7 +660,7 @@ init_statements(const std::vector<application> &apps) try {
     bool has_auth_stmts = false;
     for (auto &app : apps) {
         routes::namespace_lock lock(app.namespace_);
-        SQLite::Database database = get_database(app);
+        SQLite::Database & database = get_database(app);
         database.createFunction("cap", 1, true, nullptr, sql_custom_cap, nullptr, nullptr);
         database.createFunction("fetch", -1, true, nullptr, sql_custom_fetch, nullptr, nullptr);
         database.createFunction("timestamp", 0, true, nullptr, sql_custom_timestamp, nullptr,

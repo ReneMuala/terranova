@@ -642,8 +642,7 @@ void collect_session_int(int *field, const char *session_query, int default_, vo
     bool success = false;
     drogon::HttpRequest *ctx = (drogon::HttpRequest *)context;
     if (ctx and ctx->session()) {
-        if (auto data = ctx->session()->getOptional<int>(
-                std::string(session_query))) {
+        if (auto data = ctx->session()->getOptional<int>(std::string(session_query))) {
             success = true;
             *field = data.value();
         }
@@ -659,8 +658,7 @@ void collect_session_float(float *field, const char *session_query, float defaul
     bool success = false;
     drogon::HttpRequest *ctx = (drogon::HttpRequest *)context;
     if (ctx and ctx->session()) {
-        if (auto data = ctx->session()->getOptional<float>(
-                std::string(session_query))) {
+        if (auto data = ctx->session()->getOptional<float>(std::string(session_query))) {
             success = true;
             *field = data.value();
         }
@@ -675,8 +673,7 @@ void collect_session_const_char(const char **field, const char *session_query, c
     bool success = false;
     drogon::HttpRequest *ctx = (drogon::HttpRequest *)context;
     if (ctx and ctx->session()) {
-        if (auto data = ctx->session()->getOptional<std::string>(
-                std::string(session_query))) {
+        if (auto data = ctx->session()->getOptional<std::string>(std::string(session_query))) {
             success = true;
             *field = fake_strdup(data.value().c_str());
         }
@@ -690,8 +687,7 @@ void collect_session_bool(bool *field, const char *session_query, bool default_,
     bool success = false;
     drogon::HttpRequest *ctx = (drogon::HttpRequest *)context;
     if (ctx and ctx->session()) {
-        if (auto data = ctx->session()->getOptional<bool>(
-                std::string(session_query))) {
+        if (auto data = ctx->session()->getOptional<bool>(std::string(session_query))) {
             success = true;
             *field = data.value();
         }
@@ -701,17 +697,13 @@ void collect_session_bool(bool *field, const char *session_query, bool default_,
     }
 }
 
-enum session_role {
-    not_owned = 0,
-    owned = 1
-};
+enum session_role { not_owned = 0, owned = 1 };
 
-void collect_role_bool(bool *field, const char *role_query, bool default_, void *context){
+void collect_role_bool(bool *field, const char *role_query, bool default_, void *context) {
     bool success = false;
     drogon::HttpRequest *ctx = (drogon::HttpRequest *)context;
     if (ctx and ctx->session()) {
-        if (auto data = ctx->session()->getOptional<session_role>(
-                std::string(role_query))) {
+        if (auto data = ctx->session()->getOptional<session_role>(std::string(role_query))) {
             success = true;
             *field = data.value();
         }
@@ -1043,7 +1035,8 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                                     yyjson_val *key, *val;
                                     while ((key = yyjson_obj_iter_next(&iter))) {
                                         val = yyjson_obj_iter_get_val(key);
-                                        auto final_key = std::string("#session.")+yyjson_get_str(key); 
+                                        auto final_key =
+                                            std::string("#session.") + yyjson_get_str(key);
                                         switch (yyjson_get_tag(val)) {
                                         case YYJSON_TYPE_RAW | YYJSON_SUBTYPE_NONE:
                                         case YYJSON_TYPE_STR | YYJSON_SUBTYPE_NONE:
@@ -1076,14 +1069,17 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                                 for (auto &ref : roles_list) {
                                     auto &r = ref.get();
                                     const auto role_handler = service_handler_getter(r.name);
-                                    const bool role_owned = fetch_role_value(r.query_name, role_handler, r.prepared_statement,(void *)resp.get(), (void *)req.get());
-                                    const auto final_key = "#role."+r.query_name;
+                                    const bool role_owned = fetch_role_value(
+                                        r.query_name, role_handler, r.prepared_statement,
+                                        (void *)resp.get(), (void *)req.get());
+                                    const auto final_key = "#role." + r.query_name;
                                     req->session()->insert(final_key, session_role(role_owned));
                                 }
                             } else {
                                 resp->setStatusCode(drogon::k404NotFound);
                                 yyjson_doc_free(input_doc);
                             }
+                            yyjson_doc_free(input_doc);
                         }
                         free((void *)_r0);
                     }
@@ -1109,8 +1105,8 @@ void server_mode(const std::string filename, const std::string profile, bool wri
         case statement_kind_t::business: {
             std::string access = impl.access;
             bool is_not_public = not(access.empty());
-            if(is_not_public){
-                access = "#role."+access; // prefix it so it is searchable
+            if (is_not_public) {
+                access = "#role." + access; // prefix it so it is searchable
             }
             drogon::app().registerHandler(
                 impl.route,
@@ -1123,7 +1119,8 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                             resp->setStatusCode(drogon::k401Unauthorized);
                             callback(resp);
                             return;
-                        } else if (req->session()->get<session_role>(access) != session_role::owned) {
+                        } else if (req->session()->get<session_role>(access) !=
+                                   session_role::owned) {
                             resp->setContentTypeCode(drogon::ContentType::CT_NONE);
                             resp->setStatusCode(drogon::k403Forbidden);
                             callback(resp);
@@ -1175,10 +1172,12 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                 }
                 resp->setContentTypeString(impl.mime);
                 const auto input = resp->getBody();
-                yyjson_doc *doc = yyjson_read(input.data(), input.size(), 0);
-                mch::yyjson::yyjson_render_context ctx(doc);
-                resp->setBody(mch::render(impl.nodes, helper, &ctx));
-                callback(resp);
+                if (yyjson_doc *doc = yyjson_read(input.data(), input.size(), 0)) {
+                    mch::yyjson::yyjson_render_context ctx(doc);
+                    resp->setBody(mch::render(impl.nodes, helper, &ctx));
+                    callback(resp);
+                    yyjson_doc_free(doc);
+                }
             },
             {to_drogon_http_method(impl.method)});
     }

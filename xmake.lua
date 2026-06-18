@@ -1,6 +1,6 @@
 add_rules("plugin.compile_commands.autoupdate")
 add_rules("mode.debug", "mode.release")
-add_requires("fmt", "drogon", "glog", "iguana", "sqlitecpp", "yyjson", "uriparser"
+add_requires("fmt", "drogon", "glog", "plog", "iguana", "sqlitecpp", "yyjson", "uriparser"
 -- ,"rpclib"
 )
 

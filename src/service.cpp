@@ -1,5 +1,6 @@
 #include "service.hpp"
 
+#include <algorithm>
 #include <glog/logging.h>
 
 #include <cstdlib>
@@ -14,11 +15,29 @@
 #include "types.hpp"
 namespace service {
 static std::list<void *> _tracked_malloc_data;
+
+extern "C" {
+    void *tracked_malloc(size_t size);
+    bool tracked_free(void * ptr);
+}
+
 void *tracked_malloc(size_t size) {
     void *it = malloc(size);
     _tracked_malloc_data.push_back(it);
     return it;
 }
+
+bool tracked_free(void * ptr) {
+    auto at = std::find(_tracked_malloc_data.begin(), _tracked_malloc_data.end(), ptr);
+    if(at != _tracked_malloc_data.end()){
+        _tracked_malloc_data.remove(ptr);
+        free(ptr);
+        return true;
+    } else {
+        return false;
+    }
+}
+
 void free_all_tracked_malloc() {
     for (auto &it : _tracked_malloc_data) {
         free(it);
@@ -63,13 +82,28 @@ inline void generate_statement_usage(std::string &statement_usage_buffer_instruc
                         __FUNCTION__));
 }
 
+inline std::string to_c_char_array_representation(const std::string &raw,
+                                                  const std::string &name = "buffer") {
+    std::string result;
+    if (raw.empty()) {
+        result = fmt::format("const char * {} = 0;", name);
+    } else {
+        result = fmt::format("const char {}[{}] = {{", name,raw.size()+1);
+        for (const auto &i : raw) {
+            result.append(fmt::format("{},", int(i)));
+        }
+        result.append("0};");
+    }
+    return result;
+}
+
 inline void generate_session_param_collect(std::string &session_param_collect_instructions,
                                            std::string &destructor_instructions,
                                            const param &param) {
     if (param.type == "const char *") {
         session_param_collect_instructions.append(fmt::format(
-            R"(collect_session_const_char((const char**)&input.{0}, "{1}", "{2}", req_context);)",
-            param.name, param.value, param.default_));
+            R"({{ {2} collect_session_const_char((const char**)&input.{0}, "{1}", buffer, req_context); }})",
+            param.name, param.value, to_c_char_array_representation(param.default_)));
         destructor_instructions.append(
             fmt::format("if(input.{0}){{free((void*)input.{0}); input.{0} = 0; }}", param.name));
     } else if (param.type == "int") {
@@ -93,8 +127,7 @@ inline void generate_session_param_collect(std::string &session_param_collect_in
 }
 
 inline void generate_role_param_collect(std::string &session_param_collect_instructions,
-                                           std::string &destructor_instructions,
-                                           const param &param) {
+                                        std::string &destructor_instructions, const param &param) {
     if (param.type == "bool") {
         session_param_collect_instructions.append(
             fmt::format(R"(collect_role_bool((bool*)&input.{0}, "{1}", {2}, req_context);)",
@@ -216,14 +249,15 @@ generated_implementation generate_implementation_for_stat(const prepared_stateme
                 }
                 if (first)
                     first = false;
-            } else if(param.value.starts_with("#session.")) {
+            } else if (param.value.starts_with("#session.")) {
                 generate_session_param_collect(session_param_collect_instructions,
                                                destructor_instructions, param);
-            } else if(param.value.starts_with("#role.")) {
+            } else if (param.value.starts_with("#role.")) {
                 generate_role_param_collect(session_param_role_collect_instructions,
-                                               destructor_instructions, param);
+                                            destructor_instructions, param);
             } else {
-                throw std::runtime_error(fmt::format("unsupported param value \"{}\"", param.value));
+                throw std::runtime_error(
+                    fmt::format("unsupported param value \"{}\"", param.value));
             }
         }
         if (stat.data_provider == prepared_statement_metadata::url_params)
@@ -372,11 +406,11 @@ generated_implementation generate_implementation_for_stat(const prepared_stateme
         .access = stat.access,
         .kind = stat.kind};
 
-        // return std::move(result);
+    // return std::move(result);
 }
 
 generated_implementation generate_implementation(const prepared_statement_metadata &stat,
-                                                        find_statement_callback &find_stmt) {
+                                                 find_statement_callback &find_stmt) {
     if (stat.kind == statement_kind_t::logout) {
         return generated_implementation{.entity = stat.entity,
                                         .name = stat.name,
