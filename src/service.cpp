@@ -17,8 +17,9 @@ namespace service {
 static std::list<void *> _tracked_malloc_data;
 
 extern "C" {
-    void *tracked_malloc(size_t size);
-    bool tracked_free(void * ptr);
+void *tracked_malloc(size_t size);
+bool tracked_free(void *ptr);
+void *tracked_reallocf(void *ptr, size_t size);
 }
 
 void *tracked_malloc(size_t size) {
@@ -27,9 +28,25 @@ void *tracked_malloc(size_t size) {
     return it;
 }
 
-bool tracked_free(void * ptr) {
+inline void* trnv_reallocf(void* ptr, size_t size)
+{
+    void* new_ptr = realloc(ptr, size);
+    if (new_ptr == NULL) {
+        free(ptr);
+    }
+    return new_ptr;
+}
+
+void *tracked_reallocf(void *ptr, size_t size) {
+    _tracked_malloc_data.remove(ptr);
+    ptr = trnv_reallocf(ptr, size);
+    _tracked_malloc_data.push_back(ptr);
+    return ptr;
+}
+
+bool tracked_free(void *ptr) {
     auto at = std::find(_tracked_malloc_data.begin(), _tracked_malloc_data.end(), ptr);
-    if(at != _tracked_malloc_data.end()){
+    if (at != _tracked_malloc_data.end()) {
         _tracked_malloc_data.remove(ptr);
         free(ptr);
         return true;
@@ -88,7 +105,7 @@ inline std::string to_c_char_array_representation(const std::string &raw,
     if (raw.empty()) {
         result = fmt::format("const char * {} = 0;", name);
     } else {
-        result = fmt::format("const char {}[{}] = {{", name,raw.size()+1);
+        result = fmt::format("const char {}[{}] = {{", name, raw.size() + 1);
         for (const auto &i : raw) {
             result.append(fmt::format("{},", int(i)));
         }
@@ -249,10 +266,10 @@ generated_implementation generate_implementation_for_stat(const prepared_stateme
                 }
                 if (first)
                     first = false;
-            } else if (param.value.starts_with("#session.")) {
+            } else if (param.value.starts_with("session.")) {
                 generate_session_param_collect(session_param_collect_instructions,
                                                destructor_instructions, param);
-            } else if (param.value.starts_with("#role.")) {
+            } else if (param.value.starts_with("role.")) {
                 generate_role_param_collect(session_param_role_collect_instructions,
                                             destructor_instructions, param);
             } else {

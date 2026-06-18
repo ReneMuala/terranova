@@ -143,7 +143,38 @@ template <typename T> void load(kdl::Node &node, T &type) {
         const auto prop_name =
             std::string(reinterpret_cast<const char *>(prop.first.data()), prop.first.length());
         for_each(type, [&](auto &field, auto name, auto index) {
-            if (prop_name == misc::snake_to_kebab(misc::remove_trailing_underline(name))) {
+            const auto normalized_name =
+                misc::snake_to_kebab(misc::remove_trailing_underline(name));
+            if constexpr (std::is_same_v<T, struct param>) {
+                if (prop_name == normalized_name and normalized_name == "default") {
+                    success = true;
+                    switch (prop.second.type()) {
+                    case kdl::Type::Null:
+                        break;
+                    case kdl::Type::Bool:
+                        field = std::to_string(prop.second.as<bool>());
+                        break;
+                    case kdl::Type::Number: {
+                        auto num = prop.second.as<kdl::Number>();
+                        switch (num.representation()) {
+                        case kdl::Integer:
+                            field = std::to_string(num.as<long long>());
+                            break;
+                        case kdl::Float:
+                            field = std::to_string(num.as<double>());
+                            break;
+                        case kdl::String:
+                            break;
+                        }
+                    } break;
+                    case kdl::Type::String:
+                        field = misc::to_string(prop.second.as<std::u8string>());
+                        break;
+                    }
+                    return;
+                }
+            }
+            if (prop_name == normalized_name) {
                 success = true;
                 try {
                     if constexpr (std::is_same_v<decltype(field), std::string &>)
@@ -830,6 +861,7 @@ struct processed_template {
     std::string mime;
     std::string method;
     void *prepared_statement{};
+    std::string access;
 };
 std::string read_file(const std::string &path) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
@@ -881,11 +913,12 @@ std::vector<processed_template> init_views(const std::vector<application> &apps,
                 else
                     template_code = template_.inline_;
                 if (not template_.query.empty()) {
+                    const auto access = entity.access;
                     find_stmt_or_throw(queries,
                                        misc::second_if_empty(template_.entity, entity.name),
                                        template_.query,
                                        [&result, &template_code,
-                                        &template_](const generated_implementation &query) {
+                                        &template_, access](const generated_implementation &query) {
                                            result.push_back(processed_template{
                                                .nodes = mch::parse(template_code),
                                                .handler = query.name,
@@ -893,6 +926,7 @@ std::vector<processed_template> init_views(const std::vector<application> &apps,
                                                .mime = template_.mime,
                                                .method = query.method,
                                                .prepared_statement = query.prepared_statement,
+                                               .access = access
                                            });
                                        });
                 } else {
@@ -1023,7 +1057,7 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                             size_t count = yyjson_get_uint(yyjson_obj_get(input_root, "count"));
                             if (count == 1) {
                                 resp->setBody(_r0);
-                                req->session()->insert("#session.timestamp", (int)time(nullptr));
+                                req->session()->insert("session.timestamp", (int)time(nullptr));
                                 req->session()->insert("token",
                                                        session_token(req->session()->sessionId()));
                                 {
@@ -1036,7 +1070,7 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                                     while ((key = yyjson_obj_iter_next(&iter))) {
                                         val = yyjson_obj_iter_get_val(key);
                                         auto final_key =
-                                            std::string("#session.") + yyjson_get_str(key);
+                                            std::string("session.") + yyjson_get_str(key);
                                         switch (yyjson_get_tag(val)) {
                                         case YYJSON_TYPE_RAW | YYJSON_SUBTYPE_NONE:
                                         case YYJSON_TYPE_STR | YYJSON_SUBTYPE_NONE:
@@ -1072,7 +1106,7 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                                     const bool role_owned = fetch_role_value(
                                         r.query_name, role_handler, r.prepared_statement,
                                         (void *)resp.get(), (void *)req.get());
-                                    const auto final_key = "#role." + r.query_name;
+                                    const auto final_key = "role." + r.query_name;
                                     req->session()->insert(final_key, session_role(role_owned));
                                 }
                             } else {
@@ -1106,7 +1140,7 @@ void server_mode(const std::string filename, const std::string profile, bool wri
             std::string access = impl.access;
             bool is_not_public = not(access.empty());
             if (is_not_public) {
-                access = "#role." + access; // prefix it so it is searchable
+                access = "role." + access; // prefix it so it is searchable
             }
             drogon::app().registerHandler(
                 impl.route,
@@ -1156,12 +1190,57 @@ void server_mode(const std::string filename, const std::string profile, bool wri
             impl.handler.empty() ? nullptr : (handler_t)service_layer.peek(impl.handler);
         void *prepared_stat = impl.prepared_statement;
 
+        // drogon::app().registerHandler(
+        //     impl.route,
+        //     [handler, prepared_stat, &helper, &impl](const drogon::HttpRequestPtr &req,
+        //                                              Callback &&callback) {
+        //         auto resp = drogon::HttpResponse::newHttpResponse();
+                // resp->setContentTypeCode(drogon::ContentType::CT_TEXT_HTML);
+                // if (handler) {
+                //     if (auto _r0 = handler(prepared_stat, ("/?" + req->getQuery()).c_str(),
+                //                            (void *)resp.get(), (void *)req.get(),
+                //                            req->getBody().data(), req->getBody().size(), nullptr)) {
+                //         resp->setBody(_r0);
+                //         free((void *)_r0);
+                //     }
+                // }
+        //         resp->setContentTypeString(impl.mime);
+        //         const auto input = resp->getBody();
+        //         if (yyjson_doc *doc = yyjson_read(input.data(), input.size(), 0)) {
+        //             mch::yyjson::yyjson_render_context ctx(doc);
+        //             resp->setBody(mch::render(impl.nodes, helper, &ctx));
+        //             callback(resp);
+        //             yyjson_doc_free(doc);
+        //         }
+        //     },
+        //     {to_drogon_http_method(impl.method)});
+
+        std::string access = impl.access;
+        bool is_not_public = not(access.empty());
+        if (is_not_public) {
+            access = "role." + access; // prefix it so it is searchable
+        }
         drogon::app().registerHandler(
             impl.route,
-            [handler, prepared_stat, &helper, &impl](const drogon::HttpRequestPtr &req,
-                                                     Callback &&callback) {
+            [is_not_public, access, handler, prepared_stat, &helper,
+             &impl](const drogon::HttpRequestPtr &req, Callback &&callback) {
                 auto resp = drogon::HttpResponse::newHttpResponse();
-                resp->setContentTypeCode(drogon::ContentType::CT_TEXT_HTML);
+                // authentication & authorization
+                if (is_not_public) {
+                    if (not req->session()->getOptional<session_token>("token")) {
+                        resp->setContentTypeCode(drogon::ContentType::CT_NONE);
+                        resp->setStatusCode(drogon::k401Unauthorized);
+                        callback(resp);
+                        return;
+                    } else if (req->session()->get<session_role>(access) != session_role::owned) {
+                        resp->setContentTypeCode(drogon::ContentType::CT_NONE);
+                        resp->setStatusCode(drogon::k403Forbidden);
+                        callback(resp);
+                        return;
+                    }
+                }
+
+                // business
                 if (handler) {
                     if (auto _r0 = handler(prepared_stat, ("/?" + req->getQuery()).c_str(),
                                            (void *)resp.get(), (void *)req.get(),
@@ -1170,6 +1249,7 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                         free((void *)_r0);
                     }
                 }
+                // conversion
                 resp->setContentTypeString(impl.mime);
                 const auto input = resp->getBody();
                 if (yyjson_doc *doc = yyjson_read(input.data(), input.size(), 0)) {

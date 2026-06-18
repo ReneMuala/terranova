@@ -296,7 +296,7 @@ prepared_statement_metadata init_stmt_role(const SQLite::Database &database, con
                                std::regex(R"(\{table\})"), entity.name);
         auto params = role.params;
         params.push_back(param{
-            .name = "identity", .type = "string", .value = "#session." + auth.identity});
+            .name = "identity", .type = "string", .value = "session." + auth.identity});
         std::vector<param> stat_params = validate_and_get_stat_params(params, stmt, role.name);
         LOG(INFO) << fmt::format("prepare statement \"{}\"", stmt);
         return prepared_statement_metadata{.name = role.name,
@@ -494,9 +494,9 @@ inline void validate_custom_query_parameter(const param &param) {
     if (param.value.empty() and not param.default_.empty())
         throw std::runtime_error(
             fmt::format("param \"{}\" has \"default\" but no \"value\" specified", param.name));
-    if (not param.value.empty() and not(param.value.starts_with("#session.") or param.value.starts_with("#role.")))
+    if (not param.value.empty() and not(param.value.starts_with("session.") or param.value.starts_with("role.")))
         throw std::runtime_error(
-            fmt::format("param \"{}\" value \"{}\" is not supported (only #session.* or #role.*)", param.name,
+            fmt::format("param \"{}\" value \"{}\" is not supported (only session.* or role.*)", param.name,
                         param.value));
 }
 
