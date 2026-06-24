@@ -274,7 +274,7 @@ generated_implementation generate_implementation_for_stat(const prepared_stateme
                                             destructor_instructions, param);
             } else {
                 throw std::runtime_error(
-                    fmt::format("unsupported param value \"{}\"", param.value));
+                    fmt::format("unsupported param value \"{}\" ({})", param.value, param.name));
             }
         }
         if (stat.data_provider == prepared_statement_metadata::url_params)

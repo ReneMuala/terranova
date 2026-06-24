@@ -117,6 +117,7 @@ struct get {
     std::vector<struct data> data;
     std::string _comments;
     unsigned long long _index;
+    bool _override;
 };
 
 struct post {
@@ -126,6 +127,7 @@ struct post {
     std::vector<struct data> data;
     std::string _comments;
     unsigned long long _index;
+    bool _override;
 };
 
 struct put {
@@ -135,6 +137,7 @@ struct put {
     std::vector<struct data> data;
     std::string _comments;
     unsigned long long _index;
+    bool _override;
 };
 
 struct delete_ {
@@ -144,6 +147,7 @@ struct delete_ {
     std::vector<struct data> data;
     std::string _comments;
     unsigned long long _index;
+    bool _override;
 };
 
 struct queries {

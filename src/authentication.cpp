@@ -10,6 +10,7 @@
 #include <tuple>
 #include <unordered_map>
 #include <vector>
+#include <glog/logging.h>
 
 namespace db {
 prepared_statement_metadata init_stmt_login(const SQLite::Database &database, const entity &entity,
@@ -41,6 +42,7 @@ bool authentication::init_auth(
     auto &auth = app.auth;
 
     if (not auth.provider.empty()) {
+        LOG(INFO) << "generating auth queries";
         THROW_WHEN_EMPTY(auth.identity);
         THROW_WHEN_EMPTY(auth.secret);
         try {

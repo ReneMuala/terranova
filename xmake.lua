@@ -7,7 +7,7 @@ add_requires("fmt", "drogon", "glog", "plog", "iguana", "sqlitecpp", "yyjson", "
 target("terranova")
 set_runargs("serve")
 set_kind("binary")
-add_defines("KDL_STATIC_LIB", "KDLPP_STATIC_LIB", [[TERRANOVA_VERSION="0.2.1 Pontagea/Beira"]])
+add_defines("KDL_STATIC_LIB", "KDLPP_STATIC_LIB", [[TERRANOVA_VERSION="0.3.0 Pontagea/Beira"]])
 set_languages("c++23")
 add_includedirs("deps/ckdl/include", "deps/ckdl/bindings/cpp/include")
 add_packages("fmt", "drogon", "glog", "iguana", "sqlitecpp", "yyjson", "uriparser"

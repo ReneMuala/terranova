@@ -4,6 +4,7 @@
 #include <functional>
 #include <glog/logging.h>
 #include <sqlite3.h>
+#include <type_traits>
 #include <yyjson.h>
 
 #include <any>
@@ -123,18 +124,59 @@ template <typename T> void load(kdl::Node &node, T &type) {
         auto &_comments = ylt::reflection::get<std::string>(type, "_comments");
         _comments = node.comments();
     }
+    constexpr bool is_overrideable =
+        std::is_same_v<T, struct get> or std::is_same_v<T, struct post> or
+        std::is_same_v<T, struct put> or std::is_same_v<T, struct delete_>;
+    bool is_type_annotated = node.type_annotation().has_value();
+    bool is_overrided =
+        is_type_annotated and misc::to_string(node.type_annotation().value()) == "override";
+
+    if (not is_overrideable and is_overrided) {
+        throw std::runtime_error(fmt::format(
+            "{} is not overridable so it cannot have (override) type annotation", struct_name));
+    } else if(is_type_annotated and not is_overrided){
+        throw std::runtime_error(fmt::format(
+            "unsupported type annotation ({}) in {}.{}", misc::to_string(node.type_annotation().value()), struct_name, is_overrideable ? " Available options: (override)":""));    
+    }
+
+    if(is_overrideable and is_overrided and node.args().size() > 0){
+        throw std::runtime_error(fmt::format(
+                    "(override){0} cannot have args",
+                    struct_name));
+    }
+
     if (has_field<T>("name")) {
         auto &name = ylt::reflection::get<std::string>(type, "name");
-        if (node.args().empty())
-            throw std::runtime_error(fmt::format("\"{}\" should have a name", struct_name));
-        if (node.args().size() > 1)
-            throw std::runtime_error(
-                fmt::format("\"{0}\" should only have the name argument (eg: {0} \"name-here\"...)",
-                            struct_name));
-        const kdl::Value &value = node.args()[0];
-        if (value.type() != kdl::Type::String)
-            throw std::runtime_error(fmt::format("\"{}\"'s name must be a string", struct_name));
-        name = misc::to_string(value.as<std::u8string>());
+
+        if constexpr (std::is_same_v<T, struct get>) {
+            type._override = is_overrided;
+            type.name = "read";
+        } else if constexpr (std::is_same_v<T, struct post>) {
+            type._override = is_overrided;
+            type.name = "create";
+        } else if constexpr (std::is_same_v<T, struct put>) {
+            type._override = is_overrided;
+            type.name = "update";
+        } else if constexpr (std::is_same_v<T, struct delete_>) {
+            type._override = is_overrided;
+            type.name = "delete";
+        }
+
+        if (not(is_overrideable and is_overrided)) {
+            if (node.args().empty())
+                throw std::runtime_error(fmt::format("{} should have a name", struct_name));
+            if (node.args().size() > 1)
+                throw std::runtime_error(fmt::format(
+                    "\"{0}\" should only have the name argument (eg: {0} \"name-here\"...)",
+                    struct_name));
+            else if (node.args().size() == 1) {
+                const kdl::Value &value = node.args()[0];
+                if (value.type() != kdl::Type::String)
+                    throw std::runtime_error(
+                        fmt::format("\"{}\"'s name must be a string", struct_name));
+                name = misc::to_string(value.as<std::u8string>());
+            }
+        }
         if (name.empty())
             throw std::runtime_error(fmt::format("\"{}\"'s name cannot be empty", struct_name));
     }
@@ -917,8 +959,8 @@ std::vector<processed_template> init_views(const std::vector<application> &apps,
                     find_stmt_or_throw(queries,
                                        misc::second_if_empty(template_.entity, entity.name),
                                        template_.query,
-                                       [&result, &template_code,
-                                        &template_, access](const generated_implementation &query) {
+                                       [&result, &template_code, &template_,
+                                        access](const generated_implementation &query) {
                                            result.push_back(processed_template{
                                                .nodes = mch::parse(template_code),
                                                .handler = query.name,
@@ -926,8 +968,7 @@ std::vector<processed_template> init_views(const std::vector<application> &apps,
                                                .mime = template_.mime,
                                                .method = query.method,
                                                .prepared_statement = query.prepared_statement,
-                                               .access = access
-                                           });
+                                               .access = access});
                                        });
                 } else {
                     result.push_back(processed_template{
@@ -1195,15 +1236,15 @@ void server_mode(const std::string filename, const std::string profile, bool wri
         //     [handler, prepared_stat, &helper, &impl](const drogon::HttpRequestPtr &req,
         //                                              Callback &&callback) {
         //         auto resp = drogon::HttpResponse::newHttpResponse();
-                // resp->setContentTypeCode(drogon::ContentType::CT_TEXT_HTML);
-                // if (handler) {
-                //     if (auto _r0 = handler(prepared_stat, ("/?" + req->getQuery()).c_str(),
-                //                            (void *)resp.get(), (void *)req.get(),
-                //                            req->getBody().data(), req->getBody().size(), nullptr)) {
-                //         resp->setBody(_r0);
-                //         free((void *)_r0);
-                //     }
-                // }
+        // resp->setContentTypeCode(drogon::ContentType::CT_TEXT_HTML);
+        // if (handler) {
+        //     if (auto _r0 = handler(prepared_stat, ("/?" + req->getQuery()).c_str(),
+        //                            (void *)resp.get(), (void *)req.get(),
+        //                            req->getBody().data(), req->getBody().size(), nullptr)) {
+        //         resp->setBody(_r0);
+        //         free((void *)_r0);
+        //     }
+        // }
         //         resp->setContentTypeString(impl.mime);
         //         const auto input = resp->getBody();
         //         if (yyjson_doc *doc = yyjson_read(input.data(), input.size(), 0)) {
