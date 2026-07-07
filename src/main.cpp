@@ -134,15 +134,15 @@ template <typename T> void load(kdl::Node &node, T &type) {
     if (not is_overrideable and is_overrided) {
         throw std::runtime_error(fmt::format(
             "{} is not overridable so it cannot have (override) type annotation", struct_name));
-    } else if(is_type_annotated and not is_overrided){
-        throw std::runtime_error(fmt::format(
-            "unsupported type annotation ({}) in {}.{}", misc::to_string(node.type_annotation().value()), struct_name, is_overrideable ? " Available options: (override)":""));    
+    } else if (is_type_annotated and not is_overrided) {
+        throw std::runtime_error(
+            fmt::format("unsupported type annotation ({}) in {}.{}",
+                        misc::to_string(node.type_annotation().value()), struct_name,
+                        is_overrideable ? " Available options: (override)" : ""));
     }
 
-    if(is_overrideable and is_overrided and node.args().size() > 0){
-        throw std::runtime_error(fmt::format(
-                    "(override){0} cannot have args",
-                    struct_name));
+    if (is_overrideable and is_overrided and node.args().size() > 0) {
+        throw std::runtime_error(fmt::format("(override){0} cannot have args", struct_name));
     }
 
     if (has_field<T>("name")) {
@@ -473,7 +473,8 @@ void collect_float(const char *name, void *output_buffer, void *input_buffer) {
 void collect_bool(const char *name, void *output_buffer, void *input_buffer) {
     if (name && output_buffer && input_buffer)
         *static_cast<bool *>(output_buffer) =
-            yyjson_get_bool(yyjson_obj_get(static_cast<yyjson_val *>(input_buffer), name));
+            yyjson_get_bool(yyjson_obj_get(static_cast<yyjson_val *>(input_buffer), name)) or
+            yyjson_get_int(yyjson_obj_get(static_cast<yyjson_val *>(input_buffer), name)) == 1;
 }
 
 char *fake_strdup(const char *src) {
@@ -763,6 +764,9 @@ void collect_session_bool(bool *field, const char *session_query, bool default_,
         if (auto data = ctx->session()->getOptional<bool>(std::string(session_query))) {
             success = true;
             *field = data.value();
+        } else if (auto data = ctx->session()->getOptional<int>(std::string(session_query))) {
+            success = true;
+            *field = data.value() == 1;
         }
     }
     if (not success) {
@@ -816,10 +820,7 @@ void raise_unexpected_url_param_error(const char *where, const char *param, void
 }
 
 bool atob(const char *str) {
-    if (strcmp(str, "true") == 0 || strcmp(str, "1") == 0) {
-        return true;
-    }
-    return false;
+    return strcmp(str, "true") == 0 || strcmp(str, "1") == 0;
 }
 
 void error_handler(const char *what, const char *message, void *context) {

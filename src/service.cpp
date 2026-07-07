@@ -422,8 +422,6 @@ generated_implementation generate_implementation_for_stat(const prepared_stateme
         .query_name = stat.name,
         .access = stat.access,
         .kind = stat.kind};
-
-    // return std::move(result);
 }
 
 generated_implementation generate_implementation(const prepared_statement_metadata &stat,

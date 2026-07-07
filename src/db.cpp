@@ -712,10 +712,6 @@ init_statements(const std::vector<application> &apps) try {
         for (auto &entity : app.entity) {
             LOG(INFO) << fmt::format("generating queries for \"{}\"", entity.name);
             if (init_entity(database, entity, entity_ref_map)) {
-                if (not has_auth_stmts) {
-                    has_auth_stmts = authentication::init_auth(app, entity_ref_map, general_stmts);
-                }
-
                 if (is_query_overriden("read", "get", entity)) {
                     LOG(WARNING) << fmt::format(
                         "skipping default read statement for \"{}\", reason: override",
@@ -724,7 +720,7 @@ init_statements(const std::vector<application> &apps) try {
                     general_stmts.emplace_back(
                         init_stmt_select(database, entity, entity._4x_padded_index));
                 }
-                
+
                 if (is_query_overriden("create", "post", entity)) {
                     LOG(WARNING) << fmt::format(
                         "skipping default create statement for \"{}\", reason: override",
@@ -781,7 +777,11 @@ init_statements(const std::vector<application> &apps) try {
                     query._override, database, entity, query.name, query.sql, query.params,
                     query.data, "delete", query._comments, query._index));
         }
+        if (not has_auth_stmts) {
+            has_auth_stmts = authentication::init_auth(app, entity_ref_map, general_stmts);
+        }
     }
+
     return std::make_tuple(std::move(general_stmts), has_auth_stmts);
 } catch (std::exception &e) {
     throw std::runtime_error(fmt::format("query/role error: {}", e.what()));
