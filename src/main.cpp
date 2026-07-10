@@ -1,5 +1,6 @@
 #include <ctime>
 #include <drogon/drogon_callbacks.h>
+#include <filesystem>
 #include <fmt/core.h>
 #include <functional>
 #include <glog/logging.h>
@@ -1007,6 +1008,7 @@ void server_mode(const std::string filename, const std::string profile, bool wri
     fmt::println(R"(┌┬┐┌─┐┬─┐┬─┐┌─┐┌┐┌┌─┐┬  ┬┌─┐
  │ ├┤ ├┬┘├┬┘├─┤││││ │└┐┌┘├─┤
  ┴ └─┘┴└─┴└─┴ ┴┘└┘└─┘ └┘ ┴ ┴)");
+    LOG(INFO) << fmt::format("initiating at \"{}\"", std::filesystem::current_path().c_str());
     auto file = std::ifstream(filename);
     if (!file.is_open())
         LOG(FATAL) << fmt::format("Could not open {}", filename);
