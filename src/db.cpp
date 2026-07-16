@@ -589,7 +589,7 @@ init_stmt_custom_composed(bool is_override, const SQLite::Database &database, co
         }
         if (not has_match)
             throw std::runtime_error(
-                fmt::format("param \"{}\" has no usage in query \"{}\"", it.name, name));
+                fmt::format("param \"{}\" has no usage or was not bound in query \"{}\"", it.name, name));
     }
     return prepared_statement_metadata{
         .name = name,

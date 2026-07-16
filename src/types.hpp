@@ -4,6 +4,7 @@
 
 #pragma once
 #include <SQLiteCpp/SQLiteCpp.h>
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <vector>
@@ -94,6 +95,10 @@ struct param {
     /// use with @a value to provide a default value if the specified origin didnt have data
     std::string default_;
     std::string _comments;
+
+    inline bool is_exposed() const {
+        return value.empty();
+    }
 };
 
 struct bind {
@@ -226,6 +231,14 @@ struct prepared_statement_metadata {
     unsigned long long index;
     std::string access;
     statement_kind_t kind = statement_kind_t::business;
+
+    inline size_t get_exposed_params_count() const {
+        size_t count = 0;
+        for(auto param : params){
+            if(param.is_exposed()) count++;
+        }
+        return count;
+    }
 };
 
 // internal, not specified via kdl

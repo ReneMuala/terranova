@@ -316,15 +316,16 @@ generated_implementation generate_implementation_for_stat(const prepared_stateme
                         throw std::runtime_error(fmt::format(
                             R"(composed query "{}" cannot be used inside of another composed query "{}")",
                             target.name, stat.name));
-                    if (data_item.binds.size() != target.params.size())
+                    if (data_item.binds.size() != target.get_exposed_params_count())
                         throw std::runtime_error(fmt::format(
                             R"(data item "{}" in query "{}" has {} bindings than required for query "{}")",
                             data_item.name, stat.name,
-                            data_item.binds.size() > target.params.size() ? "more" : "less",
+                            data_item.binds.size() > target.get_exposed_params_count() ? "more" : "less",
                             target.name));
                     prepared_statement_usage.append(fmt::format(
                         "prepared_statement_reset(handler_{0}_prepared_statement);", target.index));
                     for (const auto &target_param : target.params) {
+                        if(not target_param.is_exposed()) continue;
                         bool target_param_found = false;
                         for (const auto &bind : data_item.binds) {
                             if (bind.name == target_param.name) {
