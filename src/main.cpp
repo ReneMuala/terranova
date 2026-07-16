@@ -1155,7 +1155,6 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                                 }
                             } else {
                                 resp->setStatusCode(drogon::k404NotFound);
-                                yyjson_doc_free(input_doc);
                             }
                             yyjson_doc_free(input_doc);
                         }
