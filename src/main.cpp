@@ -1301,6 +1301,10 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                     resp->setBody(mch::render(impl.nodes, helper, &ctx));
                     callback(resp);
                     yyjson_doc_free(doc);
+                } else {
+                    mch::yyjson::yyjson_render_context ctx(nullptr);
+                    resp->setBody(mch::render(impl.nodes, helper, &ctx));
+                    callback(resp);
                 }
             },
             {to_drogon_http_method(impl.method)});
