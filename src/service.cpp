@@ -28,9 +28,8 @@ void *tracked_malloc(size_t size) {
     return it;
 }
 
-inline void* trnv_reallocf(void* ptr, size_t size)
-{
-    void* new_ptr = realloc(ptr, size);
+inline void *trnv_reallocf(void *ptr, size_t size) {
+    void *new_ptr = realloc(ptr, size);
     if (new_ptr == NULL) {
         free(ptr);
     }
@@ -116,27 +115,28 @@ inline std::string to_c_char_array_representation(const std::string &raw,
 
 inline void generate_session_param_collect(std::string &session_param_collect_instructions,
                                            std::string &destructor_instructions,
-                                           const param &param) {
+                                           const param &param, const std::string & name_override = "") {
+    auto name= misc::second_if_empty(name_override, param.name);
     if (param.type == "const char *") {
         session_param_collect_instructions.append(fmt::format(
             R"({{ {2} collect_session_const_char((const char**)&input.{0}, "{1}", buffer, req_context); }})",
-            param.name, param.value, to_c_char_array_representation(param.default_)));
+            name, param.value, to_c_char_array_representation(param.default_)));
         destructor_instructions.append(
-            fmt::format("if(input.{0}){{free((void*)input.{0}); input.{0} = 0; }}", param.name));
+            fmt::format("if(input.{0}){{free((void*)input.{0}); input.{0} = 0; }}", name));
     } else if (param.type == "int") {
         session_param_collect_instructions.append(fmt::format(
-            R"(collect_session_int((int*)&input.{0}, "{1}", {2}, req_context);)", param.name,
+            R"(collect_session_int((int*)&input.{0}, "{1}", {2}, req_context);)", name,
             param.value,
             (int)std::strtol(misc::second_if_empty(param.default_, "0").c_str(), nullptr, 10)));
     } else if (param.type == "float") {
         session_param_collect_instructions.append(fmt::format(
-            R"(collect_session_float((int*)&input.{0}, "{1}", {2}, req_context);)", param.name,
+            R"(collect_session_float((int*)&input.{0}, "{1}", {2}, req_context);)", name,
             param.value,
             (float)std::strtof(misc::second_if_empty(param.default_, "0.0f").c_str(), nullptr)));
     } else if (param.type == "bool") {
         session_param_collect_instructions.append(
             fmt::format(R"(collect_session_bool((int*)&input.{0}, "{1}", {2}, req_context);)",
-                        param.name, param.value, misc::second_if_empty(param.default_, "false")));
+                        name, param.value, misc::second_if_empty(param.default_, "false")));
     } else
         throw std::runtime_error(
             fmt::format("type \"{}\" is not supported in service implementation ({})", param.type,
@@ -144,11 +144,12 @@ inline void generate_session_param_collect(std::string &session_param_collect_in
 }
 
 inline void generate_role_param_collect(std::string &session_param_collect_instructions,
-                                        std::string &destructor_instructions, const param &param) {
-    if (param.type == "bool") {
+                                        std::string &destructor_instructions, const param &param, const std::string & name_override = "") {
+    auto name= misc::second_if_empty(name_override, param.name);
+                                            if (param.type == "bool") {
         session_param_collect_instructions.append(
             fmt::format(R"(collect_role_bool((bool*)&input.{0}, "{1}", {2}, req_context);)",
-                        param.name, param.value, misc::second_if_empty(param.default_, "false")));
+                        name, param.value, misc::second_if_empty(param.default_, "false")));
     } else
         throw std::runtime_error(
             fmt::format("type \"{}\" is not supported in service implementation ({})", param.type,
@@ -283,7 +284,7 @@ generated_implementation generate_implementation_for_stat(const prepared_stateme
                 "} return true;}\n";
         else
             request_body_handler_def_instructions += "}";
-        struct_def += "};\n";
+        // struct_def += "};\n"; // moving this forward because composed params may change it
     }
     prepared_statement_usage +=
         fmt::format("result = prepared_statement_get_results_json(handler_{0}_prepared_statement, "
@@ -305,8 +306,10 @@ generated_implementation generate_implementation_for_stat(const prepared_stateme
                 misc::throw_if_invalid_identifier(
                     misc::second_if_empty(data_item.entity, stat.entity)),
                 misc::second_if_empty(data_item.query, data_item.name),
-                [&prepared_stat_array, &nested_index, &stat, &data_item,
-                 &prepared_statement_usage](const prepared_statement_metadata &target) {
+                [&prepared_stat_array, &nested_index, &stat, &data_item, &prepared_statement_usage,
+                 &session_param_collect_instructions, &destructor_instructions,
+                 &session_param_role_collect_instructions, &struct_def,
+                 &constructor](const prepared_statement_metadata &target) {
                     prepared_statement_usage.append("{");
                     prepared_stat_array[nested_index] = (void *)&target.statement;
                     prepared_statement_usage.append(fmt::format(
@@ -320,12 +323,33 @@ generated_implementation generate_implementation_for_stat(const prepared_stateme
                         throw std::runtime_error(fmt::format(
                             R"(data item "{}" in query "{}" has {} bindings than required for query "{}")",
                             data_item.name, stat.name,
-                            data_item.binds.size() > target.get_exposed_params_count() ? "more" : "less",
+                            data_item.binds.size() > target.get_exposed_params_count() ? "more"
+                                                                                       : "less",
                             target.name));
                     prepared_statement_usage.append(fmt::format(
                         "prepared_statement_reset(handler_{0}_prepared_statement);", target.index));
                     for (const auto &target_param : target.params) {
-                        if(not target_param.is_exposed()) continue;
+                        const std::string type = target_param.type == "const char *"
+                                                             ? "const_char"
+                                                             : target_param.type;
+                        const auto name_override =
+                            fmt::format("_{}_{}", target.index, target_param.name);
+                        if (not target_param.is_exposed()) {
+                            struct_def += fmt::format("{} {};", target_param.type, name_override);
+                            constructor += fmt::format("input.{0} = 0;", name_override);
+                            if (target_param.value.starts_with("session.")) {
+                                generate_session_param_collect(session_param_collect_instructions,
+                                                               destructor_instructions,
+                                                               target_param, name_override);
+                            } else if (target_param.value.starts_with("role.")) {
+                                generate_role_param_collect(session_param_role_collect_instructions,
+                                                            destructor_instructions, target_param, name_override);
+                            }
+                            prepared_statement_usage += fmt::format(
+                                    R"(bind_statement_{}(handler_{}_prepared_statement, ":{}", input.{});)",
+                                    type, target.index, target_param.name, name_override);
+                            continue;
+                        }
                         bool target_param_found = false;
                         for (const auto &bind : data_item.binds) {
                             if (bind.name == target_param.name) {
@@ -344,9 +368,7 @@ generated_implementation generate_implementation_for_stat(const prepared_stateme
                                     throw std::runtime_error(fmt::format(
                                         R"(type mismatch between binding "{}" in data item "{}" and the correspondent param in query "{}")",
                                         bind.name, data_item.name, target.name));
-                                const std::string type = target_param.type == "const char *"
-                                                             ? "const_char"
-                                                             : target_param.type;
+                                
                                 prepared_statement_usage += fmt::format(
                                     R"(bind_statement_{}(handler_{}_prepared_statement, ":{}", input.{});)",
                                     type, target.index, target_param.name, binding_parameter->name);
@@ -369,6 +391,9 @@ generated_implementation generate_implementation_for_stat(const prepared_stateme
         prepared_statement_usage.append(
             R"(result = prepared_statement_finish_results_json(result_obj,size);)");
     }
+
+    if (not struct_def.empty())
+        struct_def += "};\n";
     std::string body_def;
     constructor.append(session_param_collect_instructions);
     constructor.append(session_param_raw_collect_instructions);
