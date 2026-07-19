@@ -321,8 +321,12 @@ prepared_statement_metadata init_stmt_role(const SQLite::Database &database, con
 
 inline std::string with_comma_suffix(const std::string &name) { return name + ","; }
 
-inline std::string with_comma_suffix_colon_prefix(const std::string &name) {
-    return ":" + name + ",";
+inline std::string with_comma_suffix_colon_prefix(const std::string &name, const std::string &hash = "") {
+    if(hash.empty()){
+        return fmt::format(":{},", name);
+    } else {
+        return fmt::format("/*hash*/ {}(:{}),", misc::throw_if_invalid_identifier(hash), name);
+    }
 }
 
 prepared_statement_metadata init_stmt_insert(
@@ -340,7 +344,7 @@ prepared_statement_metadata init_stmt_insert(
             fields = true;
         auto field_name = misc::throw_if_invalid_identifier(misc::tolower(field.name));
         values.append(with_comma_suffix(field_name));
-        value_fields.append(with_comma_suffix_colon_prefix(field_name));
+        value_fields.append(with_comma_suffix_colon_prefix(field_name,field.hash));
         params.emplace_back(param{
             .name = field_name, .type = get_c_type(field.type), ._comments = field._comments});
     }
@@ -389,8 +393,12 @@ prepared_statement_metadata init_stmt_insert(
             .access = entity.access};
 }
 
-inline std::string form_set_statement(const std::string &name) {
-    return fmt::format("{0} = :{0},", name);
+inline std::string form_set_statement(const std::string &name, const std::string &hash = "") {
+    if(hash.empty()){
+        return fmt::format("{0} = :{0},", name);
+    } else {
+        return fmt::format("{0} = {1}(:{0}),", name, misc::throw_if_invalid_identifier(hash));
+    }
 }
 
 prepared_statement_metadata init_stmt_update(
@@ -405,7 +413,7 @@ prepared_statement_metadata init_stmt_update(
         if (not fields)
             fields = true;
         auto field_name = misc::throw_if_invalid_identifier(misc::tolower(field.name));
-        sets.append(form_set_statement(field_name));
+        sets.append(form_set_statement(field_name, field.hash));
         params.emplace_back(param{
             .name = field_name, .type = get_c_type(field.type), ._comments = field._comments});
     }
@@ -588,8 +596,8 @@ init_stmt_custom_composed(bool is_override, const SQLite::Database &database, co
             }
         }
         if (not has_match)
-            throw std::runtime_error(
-                fmt::format("param \"{}\" has no usage or was not bound in query \"{}\"", it.name, name));
+            throw std::runtime_error(fmt::format(
+                "param \"{}\" has no usage or was not bound in query \"{}\"", it.name, name));
     }
     return prepared_statement_metadata{
         .name = name,

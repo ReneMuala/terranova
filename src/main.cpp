@@ -1,29 +1,17 @@
+#include <algorithm>
 #include <ctime>
 #include <drogon/drogon_callbacks.h>
 #include <filesystem>
 #include <fmt/core.h>
 #include <functional>
 #include <glog/logging.h>
+#include <mutex>
+#include <numeric>
 #include <sqlite3.h>
 #include <type_traits>
 #include <yyjson.h>
 
-#include <any>
-#include <cstddef>
-#include <cstdlib>
-#include <cstring>
-#include <exception>
-#include <fstream>
-#include <iostream>
-#include <list>
-#include <memory>
-#include <regex>
-#include <stdexcept>
-#include <string>
-#include <unordered_set>
-
 #include "CLI11.hpp"
-#include "authentication.hpp"
 #include "db.hpp"
 #include "drogon/Cookie.h"
 #include "drogon/HttpTypes.h"
@@ -37,6 +25,18 @@
 #include "service.hpp"
 #include "types.hpp"
 #include "uriparser/Uri.h"
+#include <any>
+#include <cstddef>
+#include <cstdlib>
+#include <cstring>
+#include <exception>
+#include <fstream>
+#include <iostream>
+#include <list>
+#include <memory>
+#include <regex>
+#include <stdexcept>
+#include <string>
 // #include <rpc/client.h>
 std::unordered_map<std::string, std::any> handlers;
 
@@ -106,6 +106,13 @@ template <typename T> void get_loader() {
         handlers[struct_name] = loader;
     return handlers[struct_name];
 }
+
+constexpr auto REDIRECT_UNAUHORIZED_STR = "unauthorized";
+constexpr auto REDIRECT_FORBIDDEN_STR = "forbidden";
+constexpr auto REDIRECT_LOGOUT_STR = "logout";
+constexpr auto REDIRECT_LOGIN_GRANTED_STR = "login-granted";
+constexpr auto REDIRECT_LOGIN_DENIED_STR = "login-denied";
+constexpr auto REDIRECT_BAD_REQUEST_STR = "bad-request";
 
 unsigned long long global_statement_index = 1;
 
@@ -180,6 +187,25 @@ template <typename T> void load(kdl::Node &node, T &type) {
         }
         if (name.empty())
             throw std::runtime_error(fmt::format("\"{}\"'s name cannot be empty", struct_name));
+
+        if constexpr (std::is_same_v<T, struct on>) {
+            static constexpr std::array<std::string, 6> alts = {
+                REDIRECT_UNAUHORIZED_STR, REDIRECT_FORBIDDEN_STR, REDIRECT_LOGOUT_STR,
+                REDIRECT_LOGIN_GRANTED_STR, REDIRECT_LOGIN_DENIED_STR, REDIRECT_BAD_REQUEST_STR};
+            if (std::find(alts.begin(), alts.end(), name) == alts.end()) {
+                std::string names =
+                    std::reduce(alts.begin(), alts.end(), std::string(),
+                                [](const std::string &a, const std::string &b) -> std::string {
+                                    if (a.empty()) {
+                                        return b;
+                                    } else {
+                                        return fmt::format("{}, {}", a, b);
+                                    }
+                                });
+                throw std::runtime_error(fmt::format(
+                    "unsupported name \"{}\" for on. supported names: {}", name, names));
+            }
+        }
     }
     for (const auto &prop : node.properties()) {
         bool success = false;
@@ -388,14 +414,24 @@ template <typename T> void load(kdl::Node &node, T &type) {
                     load<struct role>(child, it.emplace_back());
                     success = true;
                 }
-            } /*else if constexpr (std::is_same_v<decltype(it), std::vector<struct rpc_>&>)
-            {
-                if (child_name == "rpc")
-                {
-                    load<struct rpc_>(child, it.emplace_back());
+            } else if constexpr (std::is_same_v<decltype(it), std::vector<struct redirect> &>) {
+                if (child_name == "redirect") {
+                    load<struct redirect>(child, it.emplace_back());
                     success = true;
                 }
-            }*/
+            } else if constexpr (std::is_same_v<decltype(it), std::vector<struct on> &>) {
+                if (child_name == "on") {
+                    load<struct on>(child, it.emplace_back());
+                    success = true;
+                }
+            } /*else if constexpr (std::is_same_v<decltype(it), std::vector<struct rpc_>&>)
+             {
+                 if (child_name == "rpc")
+                 {
+                     load<struct rpc_>(child, it.emplace_back());
+                     success = true;
+                 }
+             }*/
         });
         if (not success)
             throw std::runtime_error(fmt::format("child \"{}\" is not supported in \"{}\"",
@@ -416,7 +452,10 @@ void load(kdl::Document &document, std::vector<application> &apps) {
 
 void native() { std::cout << "native function called" << std::endl; }
 
+std::mutex database_mutex;
+
 bool prepared_statement_reset(void *prepared_statement) {
+    database_mutex.lock();
     SQLite::Statement *stat = (SQLite::Statement *)prepared_statement;
     if (stat) {
         try {
@@ -506,6 +545,7 @@ int to_sqlite_type(const std::string &name) {
 void error_handler(const char *what, const char *message, void *context);
 
 const char *prepared_statement_finish_results_json(void *result, size_t *size) {
+    database_mutex.unlock();
     if (result) {
         yyjson_mut_doc *output_doc = (yyjson_mut_doc *)result;
         char *body = yyjson_mut_write(output_doc, YYJSON_WRITE_ESCAPE_UNICODE, size);
@@ -553,7 +593,9 @@ void prepared_statement_append_results_json(void **result, void **root_field, co
             }
             yyjson_mut_arr_add_val(data_arr, data_item);
         }
+        database_mutex.unlock();
     } catch (std::exception &e) {
+        database_mutex.unlock();
         error_handler(__FUNCTION__, e.what(), context);
         return;
     }
@@ -601,7 +643,9 @@ const char *prepared_statement_get_results_json(void *prepared_statement, void *
             }
             yyjson_mut_arr_add_val(data_arr, data_item);
         }
+        database_mutex.unlock();
     } catch (std::exception &e) {
+        database_mutex.unlock();
         error_handler(__FUNCTION__, e.what(), context);
         return nullptr;
     }
@@ -820,13 +864,30 @@ void raise_unexpected_url_param_error(const char *where, const char *param, void
     error_handler(where, fmt::format("unexpected url parameter \"{}\".", param).c_str(), context);
 }
 
-bool atob(const char *str) {
-    return strcmp(str, "true") == 0 || strcmp(str, "1") == 0;
-}
+bool atob(const char *str) { return strcmp(str, "true") == 0 || strcmp(str, "1") == 0; }
+
+static std::map<std::string, std::string> redirects;
 
 void error_handler(const char *what, const char *message, void *context) {
     if (context) {
         drogon::HttpResponse *resp = (drogon::HttpResponse *)context;
+        if (const auto &route = redirects.find(REDIRECT_BAD_REQUEST_STR); route != redirects.end()) {
+            resp->setStatusCode(drogon::k302Found);
+            std::string routestr = route->second;
+            std::regex error_message_regex(R"(\{message\})");
+            if(not routestr.empty() and std::regex_search(routestr, error_message_regex)){
+                routestr = std::regex_replace(routestr, error_message_regex, drogon::utils::urlEncode(message));
+            }
+
+            std::regex error_location_regex(R"(\{location\})");
+            if(not routestr.empty() and std::regex_search(routestr, error_location_regex)){
+                routestr = std::regex_replace(routestr, error_location_regex, drogon::utils::urlEncode(what));
+            }
+            resp->addHeader("Location", routestr);
+            // ;
+            return;
+        }
+
         resp->setStatusCode(drogon::k400BadRequest);
         yyjson_mut_doc *output_doc = yyjson_mut_doc_new(NULL);
         yyjson_mut_val *output_root = yyjson_mut_obj(output_doc);
@@ -838,9 +899,9 @@ void error_handler(const char *what, const char *message, void *context) {
         yyjson_mut_obj_add_str(output_doc, error, "location", what);
         yyjson_mut_obj_add_int(output_doc, output_root, "modified", 0);
         char *body = yyjson_mut_write(output_doc, YYJSON_WRITE_ESCAPE_UNICODE, NULL);
-        if (false)
-            resp->setBody(get_error_page(what, message));
-        else
+        // if (false)
+        //     resp->setBody(get_error_page(what, message));
+        // else
             resp->setBody(body);
         yyjson_mut_doc_free(output_doc);
         free(body);
@@ -1004,6 +1065,34 @@ bool fetch_role_value(const std::string &name, handler_t handler, void *prepared
     return owned;
 }
 
+inline void extract_redirects(std::vector<application> &apps,
+                              std::map<std::string, std::string> &redirects) {
+    for (const auto &app : apps) {
+        for (const auto &r : app.auth.redirect) {
+            for (const auto &o : r.on) {
+                if (const auto &prev = redirects.find(o.name); prev != redirects.end()) {
+                    throw std::runtime_error(
+                        fmt::format("duplicated redirection on {} in {} (previously in {})", o.name,
+                                    r.name, prev->second));
+                }
+                redirects.emplace(o.name, r.name);
+            }
+        }
+        break;
+    }
+}
+
+inline void handle_redirect(const std::map<std::string, std::string> &redirects,
+                            drogon::HttpResponsePtr &resp, const std::string &str,
+                            const drogon::HttpStatusCode &status) {
+    if (const auto &route = redirects.find(str); route == redirects.end()) {
+        resp->setStatusCode(status);
+    } else {
+        resp->setStatusCode(drogon::k302Found);
+        resp->addHeader("Location", route->second);
+    }
+}
+
 void server_mode(const std::string filename, const std::string profile, bool write_c_file) {
     fmt::println(R"(┌┬┐┌─┐┬─┐┬─┐┌─┐┌┐┌┌─┐┬  ┬┌─┐
  │ ├┤ ├┬┘├┬┘├─┤││││ │└┐┌┘├─┤
@@ -1020,6 +1109,9 @@ void server_mode(const std::string filename, const std::string profile, bool wri
     std::optional<kdl::Document> document = kdl::parse(content);
     std::vector<application> apps;
     load(document.value(), apps);
+
+    extract_redirects(apps, redirects);
+
     auto [general_stmts, has_authentication] = db::init_statements(apps);
     docs::init_docs(apps, general_stmts);
     auto init_result = service::init_services(general_stmts);
@@ -1066,7 +1158,6 @@ void server_mode(const std::string filename, const std::string profile, bool wri
 
     std::function<handler_t(const std::string &name)> service_handler_getter =
         [&service_layer](const std::string &name) { return (handler_t)service_layer.peek(name); };
-
     for (size_t i = 0; i < size; i++) {
         generated_implementation &impl = init_result.first[i];
         LOG(INFO) << fmt::format("{} {} -> {}(...)", impl.method, impl.route, impl.name);
@@ -1087,8 +1178,7 @@ void server_mode(const std::string filename, const std::string profile, bool wri
         case statement_kind_t::login:
             drogon::app().registerHandler(
                 impl.route,
-                [handler, prepared_stat, &roles_list,
-                 &service_handler_getter](const drogon::HttpRequestPtr &req, Callback &&callback) {
+                [handler, prepared_stat, &roles_list, &service_handler_getter](const drogon::HttpRequestPtr &req, Callback &&callback) {
                     auto resp = drogon::HttpResponse::newHttpResponse();
                     resp->setContentTypeCode(drogon::ContentType::CT_APPLICATION_JSON);
                     size_t _r0_size = 0;
@@ -1100,7 +1190,13 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                             yyjson_val *input_root = yyjson_doc_get_root(input_doc);
                             size_t count = yyjson_get_uint(yyjson_obj_get(input_root, "count"));
                             if (count == 1) {
-                                resp->setBody(_r0);
+                                if (const auto &route = redirects.find(REDIRECT_LOGIN_GRANTED_STR);
+                                    route != redirects.end()) {
+                                    resp->setStatusCode(drogon::k302Found);
+                                    resp->addHeader("Location", route->second);
+                                } else {
+                                    resp->setBody(_r0);
+                                }
                                 req->session()->insert("session.timestamp", (int)time(nullptr));
                                 req->session()->insert("token",
                                                        session_token(req->session()->sessionId()));
@@ -1154,7 +1250,13 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                                     req->session()->insert(final_key, session_role(role_owned));
                                 }
                             } else {
-                                resp->setStatusCode(drogon::k404NotFound);
+                                if (const auto &route = redirects.find(REDIRECT_LOGIN_DENIED_STR);
+                                    route != redirects.end()) {
+                                    resp->setStatusCode(drogon::k302Found);
+                                    resp->addHeader("Location", route->second);
+                                } else {
+                                    resp->setStatusCode(drogon::k404NotFound);
+                                }
                             }
                             yyjson_doc_free(input_doc);
                         }
@@ -1172,8 +1274,15 @@ void server_mode(const std::string filename, const std::string profile, bool wri
                     resp->setContentTypeCode(drogon::ContentType::CT_NONE);
                     if (req->session()->getOptional<session_token>("token")) {
                         req->session()->clear();
+                        if (const auto &route = redirects.find(REDIRECT_LOGOUT_STR);
+                            route != redirects.end()) {
+                            resp->setStatusCode(drogon::k302Found);
+                            resp->addHeader("Location", route->second);
+                        }
                     } else {
-                        resp->setStatusCode(drogon::k401Unauthorized);
+                        handle_redirect(redirects, resp, REDIRECT_UNAUHORIZED_STR,
+                                        drogon::k401Unauthorized);
+                        // resp->setStatusCode(drogon::k401Unauthorized);
                     }
                     callback(resp);
                 },
@@ -1187,19 +1296,18 @@ void server_mode(const std::string filename, const std::string profile, bool wri
             }
             drogon::app().registerHandler(
                 impl.route,
-                [is_not_public, access, handler, prepared_stat](const drogon::HttpRequestPtr &req,
-                                                                Callback &&callback) {
+                [is_not_public, access, handler, prepared_stat](const drogon::HttpRequestPtr &req, Callback &&callback) {
                     auto resp = drogon::HttpResponse::newHttpResponse();
                     if (is_not_public) {
                         if (not req->session()->getOptional<session_token>("token")) {
-                            resp->setContentTypeCode(drogon::ContentType::CT_NONE);
-                            resp->setStatusCode(drogon::k401Unauthorized);
+                            handle_redirect(redirects, resp, REDIRECT_UNAUHORIZED_STR,
+                                            drogon::k401Unauthorized);
                             callback(resp);
                             return;
                         } else if (req->session()->get<session_role>(access) !=
                                    session_role::owned) {
-                            resp->setContentTypeCode(drogon::ContentType::CT_NONE);
-                            resp->setStatusCode(drogon::k403Forbidden);
+                            handle_redirect(redirects, resp, REDIRECT_FORBIDDEN_STR,
+                                            drogon::k403Forbidden);
                             callback(resp);
                             return;
                         }
@@ -1265,19 +1373,18 @@ void server_mode(const std::string filename, const std::string profile, bool wri
         }
         drogon::app().registerHandler(
             impl.route,
-            [is_not_public, access, handler, prepared_stat, &helper,
-             &impl](const drogon::HttpRequestPtr &req, Callback &&callback) {
+            [is_not_public, access, handler, prepared_stat, &helper, &impl](const drogon::HttpRequestPtr &req, Callback &&callback) {
                 auto resp = drogon::HttpResponse::newHttpResponse();
                 // authentication & authorization
                 if (is_not_public) {
                     if (not req->session()->getOptional<session_token>("token")) {
-                        resp->setContentTypeCode(drogon::ContentType::CT_NONE);
-                        resp->setStatusCode(drogon::k401Unauthorized);
+                        handle_redirect(redirects, resp, REDIRECT_UNAUHORIZED_STR,
+                                        drogon::k401Unauthorized);
                         callback(resp);
                         return;
                     } else if (req->session()->get<session_role>(access) != session_role::owned) {
-                        resp->setContentTypeCode(drogon::ContentType::CT_NONE);
-                        resp->setStatusCode(drogon::k403Forbidden);
+                        handle_redirect(redirects, resp, REDIRECT_FORBIDDEN_STR,
+                                        drogon::k403Forbidden);
                         callback(resp);
                         return;
                     }
@@ -1349,11 +1456,14 @@ int main(int argc, char **argv) try {
     std::string profile;
     serve_cmd->add_option("-p,--profile", profile, "Name of profile to use");
 
-    serve_cmd->callback([&file, &profile]() { server_mode(file, profile, false); });
-
+    serve_cmd->callback([&file, &profile]() {
 #ifdef TERRANOVA_DEBUG_MODE
-    server_mode(file, profile, true);
+        server_mode(file, profile, true);
+#else
+        server_mode(file, profile, false);
 #endif
+    });
+
     /*
     auto* msgpack_cmd = app.add_subcommand("msgpack", "Test msgpack");
 

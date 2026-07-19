@@ -19,6 +19,7 @@ struct file_options {
 struct field {
     std::string name;
     std::string type;
+    std::string hash;
     bool optional = false;
     bool unique = false;
     std::optional<struct file_options> file_options;
@@ -261,6 +262,15 @@ struct role {
     std::vector<struct param> params;
 };
 
+struct on {
+    std::string name;
+};
+
+struct redirect {
+    std::string name;
+    std::vector<struct on> on;
+};
+
 struct auth {
     std::string provider;
     std::string identity;
@@ -270,6 +280,7 @@ struct auth {
     bool persist;
     std::string _comments;
     std::vector<struct role> role;
+    std::vector<struct redirect> redirect;
 };
 
 struct rpc_ {
