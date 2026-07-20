@@ -1,7 +1,9 @@
 //
 // Created by dte on 3/30/2026.
 //
+#include <ctime>
 #include <string>
+#include "fmt/format.h"
 #include "types.hpp"
 #include <fmt/core.h>
 #include <unordered_map>
@@ -291,8 +293,10 @@ namespace docs
     {
         std::string paths = "paths:\n";
         std::unordered_map<std::string, std::string> umap;
-        for (auto& stat : stats)
+        for (auto& stat : stats){
+            if(stat.method == "(role)") continue;
             umap[stat.route] += get_path(stat, schemas);
+        }
         for (auto& pair : umap)
             paths.append(fmt::format(IDENT"{}:\n{}", pair.first, pair.second));
         return paths;
