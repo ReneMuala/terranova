@@ -1,3 +1,49 @@
-application "Server" license="mit" {
+application "Todo" version="0.1" {
+    auth provider="User" identity="name" secret="password"
+    entity "User" {
+        schema {
+            pk "id" type="int"
+            field "name" type="string"
+            field "email" type="string"
+            has-many "Todo" as="tasks" on-delete="cascade"
+        }
+    }
 
+    entity "Test" {
+        schema {
+            field "name" type="string"
+            field "email" type="string"
+            has-many "Todo" as="tasks" on-delete="cascade"
+        }
+    }
+
+    entity "Todo" {
+        schema {
+            pk "ID" type="int"
+            field "Title" type="string"
+            field "status" type="string"
+            field "created_at" type="datetime"
+            field "due" type="datetime"
+            field "is_done" type="bool"
+            field "attachment" type="file"
+            belongs-to "User" as="owner"
+        }
+
+        queries {
+            get "ovedue" sql="SELECT * FROM {table} WHERE is_done = 0 AND created_at < DATE('now', '-7 days')"
+            put "update title" sql="UPDATE {table} SET title = :title" {
+                param "title" type="string"
+            }
+            get "todos_from_date" sql="SELECT * FROM {table} WHERE due = :date" {
+                param "date" type="date"
+            }
+        }
+    }
+    profile "dev" default=true {
+        listen address="0.0.0.0" port=80
+    }
+    profile "prod" {
+        listen address="localhost" port=80
+        listen address="0.0.0.0" port=443 cert="example.crt" key="example.key"
+    }
 }

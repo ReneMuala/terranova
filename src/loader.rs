@@ -1,6 +1,5 @@
 use std::{fs::File, io::Read, panic, print};
 
-use tracing::info;
 use crate::types::Application;
 
 fn load_file_or_panic(filename: &str) -> String {
@@ -16,8 +15,7 @@ fn load_file_or_panic(filename: &str) -> String {
 
 pub fn load_or_panic(filename: &str) -> Option<Vec<Application>>{
     let content = load_file_or_panic(filename);
-    info!("content: {}", content);
-    match knus::parse::<Vec<Application>>("Test", &content) {
+    match knus::parse::<Vec<Application>>(filename, &content) {
         Ok(app) => Some(app),
         Err(err) => {
             print!("{:?}", miette::Report::new(err));
