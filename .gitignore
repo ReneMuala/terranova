@@ -1,3 +1,9 @@
 /target
 tcc.jit
 app copy.jit
+jit.c
+tcc.o
+runtime.rs.o
+compile_commands.json
+.cache/clangd/index/
+etc/

@@ -32,6 +32,8 @@ pub struct Profile {
     pub name: String,
     #[knus(property)]
     pub default: Option<bool>,
+    #[knus(property)]
+    pub database: Option<String>,
     #[knus(children)]
     pub listen: Vec<Listen>,
 }
@@ -80,63 +82,69 @@ pub struct Auth {
     pub redirect: Vec<Redirect>,
 }
 
-#[derive(knus::Decode)]
+#[derive(knus::Decode, Clone, Debug)]
 pub struct Pk {
     #[knus(argument)]
     pub name: String,
-    #[knus(property(name="type"))]
+    #[knus(property(name = "type"))]
     pub the_type: String,
 }
 
-#[derive(knus::Decode)]
+#[derive(knus::Decode, Clone, Debug)]
 pub struct HasMany {
     #[knus(argument)]
     pub name: String,
-    #[knus(property(name="as"))]
+    #[knus(property(name = "as"))]
     pub the_as: String,
-    #[knus(property(name="on-delete"))]
+    #[knus(property(name = "on-delete"))]
     pub on_delete: Option<String>,
-    #[knus(property(name="on-update"))]
+    #[knus(property(name = "on-update"))]
     pub on_update: Option<String>,
     #[knus(property)]
     pub optional: Option<bool>,
 }
 
-#[derive(knus::Decode)]
+#[derive(knus::Decode, Clone, Debug)]
 pub struct HasOne {
     #[knus(argument)]
     pub name: String,
-    #[knus(property(name="as"))]
+    #[knus(property(name = "as"))]
     pub the_as: String,
-    #[knus(property(name="on-delete"))]
+    #[knus(property(name = "on-delete"))]
     pub on_delete: Option<String>,
-    #[knus(property(name="on-update"))]
+    #[knus(property(name = "on-update"))]
     pub on_update: Option<String>,
     #[knus(property)]
     pub optional: Option<bool>,
 }
 
-#[derive(knus::Decode)]
+#[derive(knus::Decode, Clone, Debug)]
 pub struct BelongsTo {
     #[knus(argument)]
-    pub name: String,
+    pub entity: String,
     #[knus(property)]
     pub on: Option<String>,
-    #[knus(property(name="as"))]
-    pub the_as: String,
+    #[knus(property(name = "as"))]
+    pub the_as: Option<String>,
     #[knus(property)]
     pub optional: Option<bool>,
 }
 
-#[derive(knus::Decode)]
+impl BelongsTo {
+    pub fn name(&self) -> String {
+        format!("{}_id", self.the_as.clone().unwrap_or(self.entity.clone()))
+    }
+}
+
+#[derive(knus::Decode, Debug)]
 pub struct Bind {
     #[knus(argument)]
     pub name: String,
     #[knus(property)]
-    pub from: Option<String>
+    pub from: Option<String>,
 }
 
-#[derive(knus::Decode)]
+#[derive(knus::Decode, Debug)]
 pub struct Data {
     #[knus(argument)]
     pub name: String,
@@ -146,13 +154,13 @@ pub struct Data {
     pub bind: Vec<Bind>,
 }
 
-#[derive(knus::Decode)]
+#[derive(knus::Decode, Debug)]
 pub enum MethodChildren {
     Param(Param),
-    Data(Data)
+    Data(Data),
 }
 
-#[derive(knus::Decode)]
+#[derive(knus::Decode, Debug)]
 pub struct Get {
     #[knus(argument)]
     pub name: String,
@@ -162,7 +170,7 @@ pub struct Get {
     pub childreen: Vec<MethodChildren>,
 }
 
-#[derive(knus::Decode)]
+#[derive(knus::Decode, Debug)]
 pub struct Post {
     #[knus(argument)]
     pub name: String,
@@ -172,7 +180,7 @@ pub struct Post {
     pub childreen: Vec<MethodChildren>,
 }
 
-#[derive(knus::Decode)]
+#[derive(knus::Decode, Debug)]
 pub struct Put {
     #[knus(argument)]
     pub name: String,
@@ -182,7 +190,7 @@ pub struct Put {
     pub childreen: Vec<MethodChildren>,
 }
 
-#[derive(knus::Decode)]
+#[derive(knus::Decode, Debug)]
 pub struct Delete {
     #[knus(argument)]
     pub name: String,
@@ -192,7 +200,7 @@ pub struct Delete {
     pub childreen: Vec<MethodChildren>,
 }
 
-#[derive(knus::Decode)]
+#[derive(knus::Decode, Debug)]
 pub enum QueriesChildren {
     Get(Get),
     Post(Post),
@@ -206,11 +214,11 @@ pub struct Queries {
     pub children: Vec<QueriesChildren>,
 }
 
-#[derive(knus::Decode)]
+#[derive(knus::Decode, Clone, Debug)]
 pub struct Field {
     #[knus(argument)]
     pub name: String,
-    #[knus(property(name="type"))]
+    #[knus(property(name = "type"))]
     pub the_type: String,
     #[knus(property)]
     pub hash: Option<String>,
@@ -220,16 +228,28 @@ pub struct Field {
     pub unique: Option<bool>,
 }
 
-#[derive(knus::Decode)]
+#[derive(knus::Decode, Clone, Debug)]
 pub enum SchemaChild {
     Pk(Pk),
     Field(Field),
     HasMany(HasMany),
     HasOne(HasOne),
-    BelongsTo(BelongsTo)
+    BelongsTo(BelongsTo),
 }
 
-#[derive(knus::Decode)]
+impl SchemaChild {
+    pub fn name_is(&self, candidate: &str) -> bool {
+        match self {
+            SchemaChild::Pk(Pk { name, .. })
+            | SchemaChild::Field(Field { name, .. })
+            | SchemaChild::HasMany(HasMany { name, .. })
+            | SchemaChild::HasOne(HasOne { name, .. }) => name == candidate,
+            SchemaChild::BelongsTo(belongs_to) => belongs_to.name() == candidate,
+        }
+    }
+}
+
+#[derive(knus::Decode, Debug)]
 pub struct Schema {
     #[knus(children)]
     pub children: Vec<SchemaChild>,
@@ -238,7 +258,7 @@ pub struct Schema {
 #[derive(knus::Decode)]
 pub enum EntityChildren {
     Schema(Schema),
-    Queries(Queries)
+    Queries(Queries),
 }
 
 #[derive(knus::Decode)]
@@ -249,11 +269,11 @@ pub struct Entity {
     pub children: Vec<EntityChildren>,
 }
 
-#[derive(knus::Decode)]
+#[derive(knus::Decode, Debug)]
 pub struct Param {
     #[knus(argument)]
     pub name: String,
-    #[knus(property(name="type"))]
+    #[knus(property(name = "type"))]
     pub the_type: String,
     #[knus(property)]
     pub value: Option<String>,
@@ -261,11 +281,17 @@ pub struct Param {
     pub default: Option<String>,
 }
 
+impl Param {
+    pub fn exposed(&self) -> bool {
+        self.value.is_none()
+    }
+}
+
 #[derive(knus::Decode)]
 pub struct Role {
     #[knus(argument)]
     pub name: String,
-    #[knus(property(name="where"))]
+    #[knus(property(name = "where"))]
     pub condition: String,
     #[knus(children)]
     pub param: Vec<Param>,

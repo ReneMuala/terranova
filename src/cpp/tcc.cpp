@@ -5,6 +5,7 @@
 #include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <string>
 
 void error_handler(void *_opaque, const char *msg) {
@@ -67,13 +68,14 @@ struct cjit {
   }
 };
 
-uint64_t terranova::init() { return (uint64_t)new cjit("jit"); }
+uint64_t terranova::init() { return (uint64_t)new cjit("jit.c"); }
 
 void terranova::deinit(uint64_t ctx) { delete (cjit *)ctx; }
 
 bool terranova::compile(uint64_t ctx, const std::string &code) {
     auto c = ((cjit *)ctx);
     c->push("printf", (void*)printf);
+    c->push("snprintf", (void*)snprintf);
   return c->compile(code, true);
 }
 
@@ -86,4 +88,31 @@ void terranova::call(uint64_t func) {
   if (func) {
     ((void (*)())func)();
   }
+}
+
+std::unique_ptr<std::string> terranova::call_ret_str(uint64_t func){
+    std::unique_ptr<std::string> result = std::make_unique<std::string>("");
+    if (func) {
+      auto cstr = ((const char* (*)())func)();
+      result = std::make_unique<std::string>(cstr, strlen(cstr));
+    }
+    return result;
+}
+
+std::unique_ptr<std::string> terranova::call_ret_str_str(uint64_t func, const std::string & route){
+    std::unique_ptr<std::string> result = std::make_unique<std::string>("");
+    if (func) {
+      auto cstr = ((const char* (*)(const char *))func)(route.c_str());
+      result = std::make_unique<std::string>(cstr, strlen(cstr));
+    }
+    return result;
+}
+
+std::unique_ptr<std::string> terranova::call_ret_str_str_str(uint64_t func, const std::string & route, const std::string & body){
+    std::unique_ptr<std::string> result = std::make_unique<std::string>("");
+    if (func) {
+      auto cstr = ((const char* (*)(const char *, const char *))func)(route.c_str(), body.c_str());
+      result = std::make_unique<std::string>(cstr, strlen(cstr));
+    }
+    return result;
 }

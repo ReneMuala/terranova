@@ -3,7 +3,7 @@ application "Todo" version="0.1" {
     entity "User" {
         schema {
             pk "id" type="int"
-            field "name" type="string"
+            field "name" type="string" optional=true
             field "email" type="string"
             has-many "Todo" as="tasks" on-delete="cascade"
         }
@@ -19,8 +19,8 @@ application "Todo" version="0.1" {
 
     entity "Todo" {
         schema {
-            pk "ID" type="int"
-            field "Title" type="string"
+            pk "id" type="int"
+            field "Title" type="string" optional=false
             field "status" type="string"
             field "created_at" type="datetime"
             field "due" type="datetime"
@@ -39,11 +39,11 @@ application "Todo" version="0.1" {
             }
         }
     }
-    profile "dev" default=true {
-        listen address="0.0.0.0" port=80
+    profile "dev" default=true database="app.db" {
+        listen address="0.0.0.0" port=8000
     }
     profile "prod" {
-        listen address="localhost" port=80
-        listen address="0.0.0.0" port=443 cert="example.crt" key="example.key"
+        listen address="localhost" port=8001
+        // listen address="0.0.0.0" port=443 cert="example.crt" key="example.key"
     }
 }

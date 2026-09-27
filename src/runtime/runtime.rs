@@ -1,3 +1,5 @@
+use std::{marker::PhantomData, sync::Arc};
+
 use cxx::{CxxString, let_cxx_string};
 use tracing::info;
 
@@ -10,6 +12,10 @@ mod ffi {
         fn compile(ctx: u64, code: &CxxString) -> bool;
         fn get_callable(ctx: u64, code: &CxxString) -> u64;
         fn call(func: u64);
+        fn call_ret_str(func: u64)->UniquePtr<CxxString>;
+        fn call_ret_str_str(func: u64, route: &CxxString)->UniquePtr<CxxString>;
+        fn call_ret_str_str_str(func: u64, route: &CxxString, body: &CxxString)->UniquePtr<CxxString>;
+        // call_ret_str_str_str
         // fn set_callable()
         // fn feed(code: &CxxString, callback: fn());
     }
@@ -21,15 +27,36 @@ pub struct JitRuntime {
     compiled: bool
 }
 
-pub struct Callable<'a> {
+pub struct Callable {
     it: u64,
-    rt: &'a JitRuntime
+    rt: Arc<JitRuntime>
 }
 
 
-impl <'a> Callable<'a> {
-    pub fn call(&self) {
+impl Callable {
+    pub unsafe fn call(&self) {
         ffi::call(self.it);
+    }
+
+    pub unsafe fn call_ret_str(&self) -> String {
+        ffi::call_ret_str(self.it).to_string()
+    }
+
+    pub unsafe fn call_ret_str_str(&self, route: String) -> String {
+        let_cxx_string!(rt = route);
+        ffi::call_ret_str_str(self.it, &rt).to_string()
+    }
+
+    pub unsafe fn call_ret_str_str_str(&self, route: String, body: String) -> String {
+        let_cxx_string!(rt = route);
+        let_cxx_string!(bd = body);
+        ffi::call_ret_str_str_str(self.it, &rt, &bd).to_string()
+    }
+}
+
+impl Clone for Callable {
+    fn clone(&self) -> Self {
+        Callable { it: self.it, rt: Arc::clone(&self.rt) }
     }
 }
 
@@ -54,11 +81,11 @@ impl JitRuntime {
         }
     }
 
-    pub fn get(&self, callable: &str) -> Option<Callable> {
+    pub fn get(self: &Arc<Self>, callable: &str) -> Option<Callable> {
         let_cxx_string!(cxx_callable = callable);
         let it = ffi::get_callable(self.ctx, &cxx_callable);
         if it != 0 {
-            Some(Callable { it: it, rt: self })
+            Some(Callable { it: it, rt: Arc::clone(self) })
         } else {
             None
         }
