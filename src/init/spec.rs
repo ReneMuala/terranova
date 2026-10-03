@@ -5,6 +5,7 @@ use crate::init::{
     loader,
     metadata::{self, Metadata},
     migration::{self, MigrationSpec},
+    preprocessor,
     profile::{self, ProfileSpec},
     service::{self, ServiceSpec},
     spec::Error::MissingApplicationDefinition,
@@ -30,12 +31,14 @@ pub enum Error {
     MigrationError(#[from] migration::Error),
     #[error("Service spec error: {0}")]
     ServiceError(#[from] service::Error),
+    #[error("Preprocessor error: {0}")]
+    PreprocessorError(#[from] preprocessor::Error),
 }
 
 impl Spec {
     pub fn new(selected_profile: Option<String>) -> Result<Spec, Error> {
-        let definition = loader::load("app.kdl")?;
-        let app = definition.first().ok_or(MissingApplicationDefinition)?;
+        let mut definition = loader::load("app.kdl")?;
+        let app = &preprocessor::process(definition.pop().ok_or(MissingApplicationDefinition)?)?;
         let profile = profile::ProfileSpec::new(app, selected_profile)?;
         let metadata = Metadata::new(app);
         let sqlgen = Sqlite;

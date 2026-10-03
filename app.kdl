@@ -39,8 +39,9 @@ application "Todo" version="0.1" {
             }
         }
     }
-    profile "dev" default=true database="app.db" {
+    profile "dev" default=true database="app.sqlite" {
         listen address="0.0.0.0" port=8000
+        listen address="0.0.0.254" port=8000
     }
     profile "prod" {
         listen address="localhost" port=8001
