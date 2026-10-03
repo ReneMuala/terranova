@@ -10,7 +10,7 @@ pub enum Error {}
 
 impl ServiceSpec {
     pub fn new(app: &Application, sqlgen: &impl SqlGen) -> Result<ServiceSpec, Error> {
-        let db_service = sqlgen.services(app);
+        let db_service = sqlgen.get_services(app);
         warn!("{db_service:?}");
         Ok(ServiceSpec {})
     }

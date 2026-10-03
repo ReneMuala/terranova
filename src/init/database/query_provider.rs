@@ -29,10 +29,8 @@ impl<'a> QueryProvider<'a> {
             match child {
                 ApplicationChildren::Entity(entity) => {
                     if entity.name == query.entity {
-                        let schema = <Sqlite as SqlGen>::get_schema(entity).ok_or_else(|| {
-                            Error::NoSchemaInEntity {
-                                entity: query.entity.to_string(),
-                            }
+                        let schema = entity.schema().ok_or_else(|| Error::NoSchemaInEntity {
+                            entity: query.entity.to_string(),
                         })?;
                         let field = schema
                             .children
@@ -45,7 +43,7 @@ impl<'a> QueryProvider<'a> {
                         return match field {
                             SchemaChild::Pk(pk) => Ok(Field {
                                 name: pk.name.clone(),
-                                the_type: pk.the_type.to_string(),
+                                r#type: pk.r#type.to_string(),
                                 hash: None,
                                 optional: None,
                                 unique: Some(true),

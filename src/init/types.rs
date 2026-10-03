@@ -87,7 +87,7 @@ pub struct Pk {
     #[knus(argument)]
     pub name: String,
     #[knus(property(name = "type"))]
-    pub the_type: String,
+    pub r#type: String,
 }
 
 #[derive(knus::Decode, Clone, Debug)]
@@ -157,7 +157,7 @@ pub struct Data {
 #[derive(knus::Decode, Debug)]
 pub enum MethodChildren {
     Param(Param),
-    Data(Data),
+    // Data(Data), // data will be enabled soon
 }
 
 #[derive(knus::Decode, Debug)]
@@ -208,6 +208,39 @@ pub enum QueriesChildren {
     Delete(Delete),
 }
 
+impl QueriesChildren {
+    pub fn params(&self) -> Vec<&Param> {
+        let mut result = vec![];
+        for child in self.childreen() {
+            match child {
+                MethodChildren::Param(param) => {
+                    result.push(param);
+                }
+                _ => {}
+            }
+        }
+        result
+    }
+
+    pub fn values(&self) -> (&String, &String) {
+        match self {
+            QueriesChildren::Get(Get { name, sql, .. })
+            | QueriesChildren::Post(Post { name, sql, .. })
+            | QueriesChildren::Put(Put { name, sql, .. })
+            | QueriesChildren::Delete(Delete { name, sql, .. }) => (name, sql),
+        }
+    }
+
+    pub fn childreen(&self) -> &Vec<MethodChildren> {
+        match self {
+            QueriesChildren::Get(Get { childreen, .. })
+            | QueriesChildren::Post(Post { childreen, .. })
+            | QueriesChildren::Put(Put { childreen, .. })
+            | QueriesChildren::Delete(Delete { childreen, .. }) => childreen,
+        }
+    }
+}
+
 #[derive(knus::Decode)]
 pub struct Queries {
     #[knus(children)]
@@ -219,7 +252,7 @@ pub struct Field {
     #[knus(argument)]
     pub name: String,
     #[knus(property(name = "type"))]
-    pub the_type: String,
+    pub r#type: String,
     #[knus(property)]
     pub hash: Option<String>,
     #[knus(property)]
@@ -255,6 +288,18 @@ pub struct Schema {
     pub children: Vec<SchemaChild>,
 }
 
+impl Schema {
+    pub fn pk(&self) -> Option<&Pk> {
+        for child in &self.children {
+            match child {
+                SchemaChild::Pk(pk) => return Some(&pk),
+                _ => {}
+            }
+        }
+        None
+    }
+}
+
 #[derive(knus::Decode)]
 pub enum EntityChildren {
     Schema(Schema),
@@ -269,12 +314,34 @@ pub struct Entity {
     pub children: Vec<EntityChildren>,
 }
 
+impl Entity {
+    pub fn schema(&self) -> Option<&Schema> {
+        for child in &self.children {
+            match child {
+                EntityChildren::Schema(schema) => return Some(&schema),
+                _ => {}
+            }
+        }
+        None
+    }
+
+    pub fn queries(&self) -> Option<&Queries> {
+        for child in &self.children {
+            match child {
+                EntityChildren::Queries(queries) => return Some(&queries),
+                _ => {}
+            }
+        }
+        None
+    }
+}
+
 #[derive(knus::Decode, Debug)]
 pub struct Param {
     #[knus(argument)]
     pub name: String,
     #[knus(property(name = "type"))]
-    pub the_type: String,
+    pub r#type: String,
     #[knus(property)]
     pub value: Option<String>,
     #[knus(property)]
@@ -282,6 +349,32 @@ pub struct Param {
 }
 
 impl Param {
+    pub fn from_tuple((name, r#type): (String, String)) -> Param {
+        Param {
+            name,
+            r#type,
+            value: None,
+            default: None,
+        }
+    }
+    pub fn from_field(field: &Field) -> Param {
+        Param {
+            name: field.name.clone(),
+            r#type: field.r#type.clone(),
+            value: None,
+            default: None,
+        }
+    }
+
+    pub fn from_pk(field: &Pk) -> Param {
+        Param {
+            name: field.name.clone(),
+            r#type: field.r#type.clone(),
+            value: None,
+            default: None,
+        }
+    }
+
     pub fn exposed(&self) -> bool {
         self.value.is_none()
     }

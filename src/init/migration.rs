@@ -15,7 +15,7 @@ pub enum Error {
 
 impl MigrationSpec {
     pub fn new(app: &Application, sqlgen: &impl SqlGen) -> Result<MigrationSpec, Error> {
-        let queries = sqlgen.init_statements(app)?;
+        let queries = sqlgen.get_init_statements(app)?;
         Ok(MigrationSpec { queries })
     }
 }
