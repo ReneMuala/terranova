@@ -1,6 +1,6 @@
 use crate::init::{
     database::{SqlGen, Sqlite},
-    types::{Application, ApplicationChildren, Field, Profile, SchemaChild},
+    types::{Application, ApplicationChildren, Field, HasMany, Profile, SchemaChild},
 };
 use thiserror::Error;
 
@@ -11,6 +11,16 @@ pub struct QueryProvider<'a> {
 pub struct FieldQuery<'a, 'b> {
     pub entity: &'a str,
     pub field: &'b str,
+}
+
+pub struct RelSpecQuery<'a> {
+    pub strong_entity: &'a str,
+    pub weak_entity: &'a str,
+}
+
+enum RelSpec<'a> {
+    HasMany(&'a HasMany),
+    HasOne(&'a HasOne),
 }
 
 #[derive(Debug, Error)]
@@ -24,6 +34,41 @@ pub enum Error {
 }
 
 impl<'a> QueryProvider<'a> {
+    pub fn relation_specifier(&self, query: RelSpecQuery) -> Result<RelSpec, Error> {
+        for child in &self.app.children {
+            match child {
+                ApplicationChildren::Entity(entity) => {
+                    if entity.name == query.strong_entity {
+                        let schema = entity.schema().ok_or_else(|| Error::NoSchemaInEntity {
+                            entity: query.strong_entity.to_string(),
+                        })?;
+                        let field = schema
+                            .children
+                            .iter()
+                            .find(|c| c.name_is(&query.weak_entity))
+                            .ok_or_else(|| Error::FieldNotFoundInEntity {
+                                field: query.weak_entity.to_string(),
+                                entity: query.strong_entity.to_string(),
+                            })?;
+                        return match field {
+                            SchemaChild::HasMany(has_many) => Ok(RelSpec::HasMany(&has_many)),
+                            SchemaChild::HasOne(has_one) => Ok(RelSpec::HasOne(&has_one)),
+                            _ => Err(Error::FieldNotFoundInEntity {
+                                field: query.weak_entity.to_string(),
+                                entity: query.strong_entity.to_string(),
+                            }),
+                        };
+                    }
+                }
+                _ => {}
+            }
+        }
+        Err(Error::UnsupportedQueryForField {
+            field: query.field.to_string(),
+            entity: query.strong_entity.to_string(),
+        })
+    }
+
     pub fn field(&self, query: FieldQuery) -> Result<Field, Error> {
         for child in &self.app.children {
             match child {

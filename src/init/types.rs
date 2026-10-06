@@ -95,7 +95,7 @@ pub struct HasMany {
     #[knus(argument)]
     pub name: String,
     #[knus(property(name = "as"))]
-    pub the_as: String,
+    pub r#as: String,
     #[knus(property(name = "on-delete"))]
     pub on_delete: Option<String>,
     #[knus(property(name = "on-update"))]
@@ -109,7 +109,7 @@ pub struct HasOne {
     #[knus(argument)]
     pub name: String,
     #[knus(property(name = "as"))]
-    pub the_as: String,
+    pub r#as: String,
     #[knus(property(name = "on-delete"))]
     pub on_delete: Option<String>,
     #[knus(property(name = "on-update"))]
@@ -125,14 +125,14 @@ pub struct BelongsTo {
     #[knus(property)]
     pub on: Option<String>,
     #[knus(property(name = "as"))]
-    pub the_as: Option<String>,
+    pub r#as: Option<String>,
     #[knus(property)]
     pub optional: Option<bool>,
 }
 
 impl BelongsTo {
     pub fn name(&self) -> String {
-        format!("{}_id", self.the_as.clone().unwrap_or(self.entity.clone()))
+        format!("{}_id", self.r#as.clone().unwrap_or(self.entity.clone()))
     }
 }
 
@@ -310,6 +310,8 @@ pub enum EntityChildren {
 pub struct Entity {
     #[knus(argument)]
     pub name: String,
+    #[knus(property)]
+    pub access: Option<String>,
     #[knus(children)]
     pub children: Vec<EntityChildren>,
 }

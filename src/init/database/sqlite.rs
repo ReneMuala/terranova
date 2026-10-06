@@ -100,6 +100,7 @@ impl Sqlite {
                         "NOT NULL"
                     };
                     let ty = r#type;
+                    
                     format!("{name} {ty} {optional}, FOREIGN KEY {name} REFERENCES {entity}({on}),")
                 }
                 _ => String::new(),
