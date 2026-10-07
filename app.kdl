@@ -1,5 +1,7 @@
 application "Todo" version="0.1" license="MIT" email="renemuala@icloud.com" {
-    auth provider="User" identity="name" secret="password"
+    auth provider="User" identity="name" secret="password" {
+        role "admin" where="user.name = 'admin'"
+    }
     entity "User" {
         schema {
             pk "id" type="int"

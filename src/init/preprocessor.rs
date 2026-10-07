@@ -5,8 +5,9 @@ use crate::init::{
         LocationPiece::{Borrowed, Owned},
     },
     types::{
-        Application, BelongsTo, Entity, EntityChildren, Field, HasMany, HasOne, Listen,
-        MethodChildren, Pk, Profile, Queries, QueriesChildren, Schema, SchemaChild,
+        Application, Auth, AuthChildren, BelongsTo, Entity, EntityChildren, Field, HasMany, HasOne,
+        Listen, MethodChildren, On, Pk, Profile, Queries, QueriesChildren, Redirect, Role, Schema,
+        SchemaChild,
     },
 };
 use regex::Regex;
@@ -158,7 +159,7 @@ macro_rules! process_type {
     ($type:expr, $loc:tt) => {
         trim!($type);
         regex_validate_or!(
-            r#"^(int|float|string|datetime|date|bool|file)$"#,
+            r#"^(int|float|string|datetime|date|blob|bool|file)$"#,
             &$type,
             InvalidType,
             $loc
@@ -421,6 +422,71 @@ pub fn process_entity(
     )
 }
 
+pub fn process_role(location: &mut Location, role: &mut Role, index: usize) -> Result<(), Error> {
+    with_location!(
+        Owned(format!("role${index}")),
+        {
+            process_name!(role.name, location);
+            Ok(())
+        },
+        location
+    )
+}
+
+pub fn process_on(location: &mut Location, on: &mut On, index: usize) -> Result<(), Error> {
+    with_location!(
+        Owned(format!("on${index}")),
+        {
+            // process_name!(on.event, location);
+            regex_validate_or!(
+                r#"^(unauthorized|forbidden|logout|login-granted|login-denied|bad-request)$"#,
+                &on.event,
+                InvalidName,
+                location
+            );
+
+            Ok(())
+        },
+        location
+    )
+}
+
+pub fn process_redirect(
+    location: &mut Location,
+    redirect: &mut Redirect,
+    index: usize,
+) -> Result<(), Error> {
+    with_location!(
+        Owned(format!("redirect${index}")),
+        {
+            for (index, child) in redirect.on.iter_mut().enumerate() {
+                process_on(location, child, index)?
+            }
+            Ok(())
+        },
+        location
+    )
+}
+
+pub fn process_auth(location: &mut Location, auth: &mut Auth, index: usize) -> Result<(), Error> {
+    with_location!(
+        Owned(format!("auth${index}")),
+        {
+            process_name!(auth.identity, location);
+            process_name!(auth.secret, location);
+            process_name!(auth.provider, location);
+            for (index, child) in auth.children.iter_mut().enumerate() {
+                match child {
+                    AuthChildren::Role(role) => process_role(location, role, index),
+                    AuthChildren::Redirect(redirect) => process_redirect(location, redirect, index),
+                }?
+            }
+            Ok(())
+        },
+        location
+    )
+}
+
 pub fn process(mut app: Application) -> Result<Application, Error> {
     let mut location = Location(vec![]);
     with_location!(
@@ -440,6 +506,7 @@ pub fn process(mut app: Application) -> Result<Application, Error> {
                     ApplicationChildren::Entity(entity) => {
                         process_entity(&mut location, entity, index)
                     }
+                    ApplicationChildren::Auth(auth) => process_auth(&mut location, auth, index),
                 }?
             }
             Ok(app)

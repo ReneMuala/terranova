@@ -2,7 +2,7 @@ use crate::init::{
     database::{
         Error::{NoPk, NoSchema, TypeNotFound},
         SqlGen, SqlGenService,
-        query_provider::{self, FieldQuery, QueryProvider},
+        query_provider::{self, FieldQuery, QueryProvider, RelSpecQuery},
     },
     types::{
         Application, ApplicationChildren, BelongsTo, Entity, Field, Param, Pk, QueriesChildren,
@@ -51,6 +51,7 @@ impl Sqlite {
 
     fn get_field_declarations(
         &self,
+        entity_name: &str,
         Schema { children }: &Schema,
         qp: &QueryProvider,
     ) -> Result<String, Error> {
@@ -100,8 +101,22 @@ impl Sqlite {
                         "NOT NULL"
                     };
                     let ty = r#type;
-                    
-                    format!("{name} {ty} {optional}, FOREIGN KEY {name} REFERENCES {entity}({on}),")
+
+                    let (on_delete, on_update) = {
+                        let relspec = qp.relation_specifier(RelSpecQuery {
+                            strong_entity: &name,
+                            weak_entity: entity_name,
+                        });
+
+                        match relspec {
+                            Ok(rel) => (rel.on_delete(), rel.on_update()),
+                            Err(_) => ("CASCADE".to_owned(), "CASCADE".to_owned()),
+                        }
+                    };
+
+                    format!(
+                        "{name} {ty} {optional}, FOREIGN KEY {name} REFERENCES {entity}({on}) ON UPDATE {on_update} ON DELETE {on_delete},"
+                    )
                 }
                 _ => String::new(),
             };
@@ -113,7 +128,7 @@ impl Sqlite {
 
     fn init_entity_statements(&self, entity: &Entity, qp: &QueryProvider) -> Result<String, Error> {
         let schema = entity.schema().ok_or(NoSchema)?;
-        let declarations = self.get_field_declarations(schema, &qp)?;
+        let declarations = self.get_field_declarations(&entity.name, schema, &qp)?;
         Ok(format!(
             "CREATE TABLE IF NOT EXISTS {} {{ {declarations} }};",
             entity.name

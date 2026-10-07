@@ -24,6 +24,7 @@ pub struct Application {
 pub enum ApplicationChildren {
     Profile(Profile),
     Entity(Entity),
+    Auth(Auth),
 }
 
 #[derive(knus::Decode)]
@@ -55,7 +56,7 @@ pub struct Listen {
 #[derive(knus::Decode)]
 pub struct On {
     #[knus(argument)]
-    pub status: String,
+    pub event: String,
 }
 
 #[derive(knus::Decode)]
@@ -79,7 +80,13 @@ pub struct Auth {
     #[knus(property)]
     pub persist: Option<u64>,
     #[knus(children)]
-    pub redirect: Vec<Redirect>,
+    pub children: Vec<AuthChildren>,
+}
+
+#[derive(knus::Decode)]
+pub enum AuthChildren {
+    Role(Role),
+    Redirect(Redirect),
 }
 
 #[derive(knus::Decode, Clone, Debug)]

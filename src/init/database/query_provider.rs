@@ -1,6 +1,6 @@
 use crate::init::{
     database::{SqlGen, Sqlite},
-    types::{Application, ApplicationChildren, Field, HasMany, Profile, SchemaChild},
+    types::{Application, ApplicationChildren, Field, HasMany, HasOne, Profile, SchemaChild},
 };
 use thiserror::Error;
 
@@ -18,9 +18,27 @@ pub struct RelSpecQuery<'a> {
     pub weak_entity: &'a str,
 }
 
-enum RelSpec<'a> {
+pub enum RelSpec<'a> {
     HasMany(&'a HasMany),
     HasOne(&'a HasOne),
+}
+
+impl<'a> RelSpec<'a> {
+    pub fn on_delete(&self) -> String {
+        match self {
+            RelSpec::HasMany(it) if let Some(value) = &it.on_delete => value.clone(),
+            RelSpec::HasOne(it) if let Some(value) = &it.on_delete => value.clone(),
+            _ => "CASCADE".to_owned(),
+        }
+    }
+
+    pub fn on_update(&self) -> String {
+        match self {
+            RelSpec::HasMany(it) if let Some(value) = &it.on_update => value.clone(),
+            RelSpec::HasOne(it) if let Some(value) = &it.on_update => value.clone(),
+            _ => "CASCADE".to_owned(),
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -64,7 +82,7 @@ impl<'a> QueryProvider<'a> {
             }
         }
         Err(Error::UnsupportedQueryForField {
-            field: query.field.to_string(),
+            field: query.weak_entity.to_string(),
             entity: query.strong_entity.to_string(),
         })
     }
