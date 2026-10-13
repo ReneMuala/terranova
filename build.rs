@@ -1,5 +1,5 @@
 fn main() {
-    cxx_build::bridge("src/runtime/runtime.rs")
+    cxx_build::bridge("src/runtime/jit.rs")
         .file("src/cpp/tcc.cpp")
         .std("c++17")
         .flags(["-ltcc"])

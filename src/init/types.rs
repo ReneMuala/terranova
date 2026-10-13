@@ -1,3 +1,5 @@
+use crate::init::database::{self, Sqlite};
+
 #[derive(knus::Decode)]
 pub struct Application {
     #[knus(argument)]
@@ -14,8 +16,6 @@ pub struct Application {
     pub namespace: Option<String>,
     #[knus(property)]
     pub serve_docs: Option<bool>,
-    #[knus(child)]
-    pub auth: Option<Auth>,
     #[knus(children)]
     pub children: Vec<ApplicationChildren>,
 }
@@ -25,6 +25,18 @@ pub enum ApplicationChildren {
     Profile(Profile),
     Entity(Entity),
     Auth(Auth),
+}
+
+impl Application {
+    pub fn auth(&self) -> Option<&Auth> {
+        for child in &self.children {
+            match child {
+                ApplicationChildren::Auth(auth) => return Some(&auth),
+                _ => {}
+            };
+        }
+        None
+    }
 }
 
 #[derive(knus::Decode)]
@@ -223,7 +235,18 @@ impl QueriesChildren {
                 MethodChildren::Param(param) => {
                     result.push(param);
                 }
-                _ => {}
+            }
+        }
+        result
+    }
+
+    pub fn cloned_params(&self) -> Vec<Param> {
+        let mut result = vec![];
+        for child in self.childreen() {
+            match child {
+                MethodChildren::Param(param) => {
+                    result.push(param.clone());
+                }
             }
         }
         result
@@ -345,7 +368,7 @@ impl Entity {
     }
 }
 
-#[derive(knus::Decode, Debug)]
+#[derive(knus::Decode, Debug, Clone)]
 pub struct Param {
     #[knus(argument)]
     pub name: String,

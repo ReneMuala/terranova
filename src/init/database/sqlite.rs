@@ -1,12 +1,12 @@
 use crate::init::{
     database::{
-        Error::{NoPk, NoSchema, TypeNotFound},
+        Error::{NoAuth, NoPk, NoSchema, TypeNotFound},
         SqlGen, SqlGenService,
         query_provider::{self, FieldQuery, QueryProvider, RelSpecQuery},
     },
     types::{
-        Application, ApplicationChildren, BelongsTo, Entity, Field, Param, Pk, QueriesChildren,
-        Schema, SchemaChild,
+        Application, ApplicationChildren, Auth, BelongsTo, Entity, Field, Param, Pk,
+        QueriesChildren, Schema, SchemaChild,
     },
 };
 use thiserror::Error;
@@ -25,10 +25,12 @@ pub enum Error {
     NoSchema,
     #[error("NoPk")]
     NoPk,
+    #[error("NoAuth")]
+    NoAuth,
 }
 
 impl Sqlite {
-    fn get_type(r#type: &str) -> Result<String, Error> {
+    pub fn get_type(r#type: &str) -> Result<String, Error> {
         let stype = match r#type {
             "int" => "INTEGER",
             "float" => "REAL",
@@ -38,6 +40,26 @@ impl Sqlite {
             "date" => "DATE",
             "datetime" => "DATETIME",
             "bool" => "BOOL",
+            _ => "",
+        }
+        .to_string();
+
+        if stype.is_empty() {
+            Err(TypeNotFound(r#type.to_string()))
+        } else {
+            Ok(stype)
+        }
+    }
+
+    pub fn get_normalized_type(r#type: &str) -> Result<String, Error> {
+        let stype = match r#type {
+            "INTEGER" => "int",
+            "REAL" => "float",
+            "TEXT" => "string",
+            "BLOB" => "blob",
+            "DATE" => "date",
+            "DATETIME" => "datetime",
+            "BOOL" => "bool",
             _ => "",
         }
         .to_string();
@@ -156,7 +178,7 @@ impl Sqlite {
                                 entity: &belongs_to.entity,
                                 field: &belongs_to.on.clone().unwrap_or("id".to_owned()),
                             })?;
-                            Sqlite::get_type(&entity_pk.r#type)?
+                            entity_pk.r#type
                         };
 
                         Param {
@@ -191,7 +213,7 @@ impl Sqlite {
         &self,
         entity: &'a Entity,
         qp: &QueryProvider,
-    ) -> Result<SqlGenService<'a>, Error> {
+    ) -> Result<SqlGenService, Error> {
         let schema = entity.schema().ok_or(NoSchema)?;
         let name = &entity.name;
         let (insert_fields, params) = self.get_insert_fields(schema, qp)?;
@@ -202,6 +224,7 @@ impl Sqlite {
             name: name.clone(),
             query,
             params,
+            entity: entity.name.clone(),
         })
     }
 
@@ -226,7 +249,7 @@ impl Sqlite {
                                 entity: &belongs_to.entity,
                                 field: &belongs_to.on.clone().unwrap_or("id".to_owned()),
                             })?;
-                            Sqlite::get_type(&entity_pk.r#type)?
+                            entity_pk.r#type
                         };
 
                         Param {
@@ -252,7 +275,7 @@ impl Sqlite {
         &self,
         entity: &'a Entity,
         qp: &QueryProvider,
-    ) -> Result<SqlGenService<'a>, Error> {
+    ) -> Result<SqlGenService, Error> {
         let schema = entity.schema().ok_or(NoSchema)?;
         let pk = schema.pk().ok_or(NoPk)?;
         let name = &entity.name;
@@ -265,6 +288,7 @@ impl Sqlite {
             name: name.clone(),
             query,
             params,
+            entity: entity.name.clone(),
         })
     }
 
@@ -288,7 +312,7 @@ impl Sqlite {
         Ok(result)
     }
 
-    fn get_select_service<'a>(&self, entity: &'a Entity) -> Result<SqlGenService<'a>, Error> {
+    fn get_select_service<'a>(&self, entity: &'a Entity) -> Result<SqlGenService, Error> {
         let schema = entity.schema().ok_or(NoSchema)?;
         let name = &entity.name;
         let select_fields = self.get_select_fields(schema)?;
@@ -297,6 +321,7 @@ impl Sqlite {
             r#type: ServiceType::Read,
             query,
             name: name.clone(),
+            entity: entity.name.clone(),
             params: vec![
                 Param::from_tuple(("limit".to_owned(), "int".to_owned())),
                 Param::from_tuple(("offset".to_owned(), "int".to_owned())),
@@ -304,7 +329,39 @@ impl Sqlite {
         })
     }
 
-    fn get_delete_service<'a>(&self, entity: &'a Entity) -> Result<SqlGenService<'a>, Error> {
+    fn get_login_service<'a>(
+        &self,
+        Auth {
+            identity,
+            secret,
+            provider,
+            ..
+        }: &'a Auth,
+        qp: &QueryProvider,
+    ) -> Result<SqlGenService, Error> {
+        qp.field(FieldQuery {
+            entity: &provider,
+            field: &identity,
+        })?;
+        qp.field(FieldQuery {
+            entity: &provider,
+            field: &secret,
+        })?;
+        let schema = qp.schema(provider)?;
+        let select_fields = self.get_select_fields(schema)?;
+        let query = format!(
+            "SELECT {select_fields} FROM {provider} WHERE {identity} = $1 AND {secret} = $2 LIMIT 1"
+        );
+        Ok(SqlGenService::Login {
+            query,
+            params: vec![
+                Param::from_tuple(("identity".to_owned(), "string".to_owned())),
+                Param::from_tuple(("secret".to_owned(), "string".to_owned())),
+            ],
+        })
+    }
+
+    fn get_delete_service<'a>(&self, entity: &'a Entity) -> Result<SqlGenService, Error> {
         let schema = entity.schema().ok_or(NoSchema)?;
         let pk = schema.pk().ok_or(NoPk)?;
         let name = &entity.name;
@@ -316,18 +373,24 @@ impl Sqlite {
             name: name.clone(),
             query,
             params,
+            entity: entity.name.clone(),
         })
     }
 
-    fn get_custom_service<'a>(&self, query: &'a QueriesChildren) -> SqlGenService<'a> {
+    fn get_custom_service<'a>(
+        &self,
+        query: &'a QueriesChildren,
+        entity_name: String,
+    ) -> SqlGenService {
         let r#type = ServiceType::from_querieschildren(&query);
-        let params = query.params();
+        let params = query.cloned_params();
         let (name, query) = query.values();
         SqlGenService::Query {
             r#type,
             name: name.clone(),
             query: query.clone(),
             params,
+            entity: entity_name,
         }
     }
 }
@@ -358,12 +421,19 @@ impl SqlGen for Sqlite {
     fn get_services<'a>(
         &self,
         app: &'a Application,
-    ) -> Result<Vec<super::SqlGenService<'a>>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<Vec<super::SqlGenService>, Box<dyn std::error::Error + Send + Sync>> {
         let mut statements = vec![];
         let qp: QueryProvider = QueryProvider { app };
 
         for child in &app.children {
             match child {
+                ApplicationChildren::Auth(auth) => {
+                    match self.get_login_service(auth, &qp) {
+                        Ok(statement) => statements.push(statement),
+                        Err(NoSchema) => {}
+                        Err(err) => return Err(err.into()),
+                    };
+                }
                 ApplicationChildren::Entity(entity) => {
                     match self.get_select_service(entity) {
                         Ok(statement) => statements.push(statement),
@@ -388,7 +458,7 @@ impl SqlGen for Sqlite {
 
                     if let Some(queries) = entity.queries() {
                         for child in &queries.children {
-                            statements.push(self.get_custom_service(child));
+                            statements.push(self.get_custom_service(child, entity.name.clone()));
                         }
                     }
                 }

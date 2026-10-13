@@ -1,6 +1,8 @@
 use crate::init::{
-    database::{SqlGen, Sqlite},
-    types::{Application, ApplicationChildren, Field, HasMany, HasOne, Profile, SchemaChild},
+    database::{SqlGen, Sqlite, query_provider::Error::EntityNotFound},
+    types::{
+        Application, ApplicationChildren, Field, HasMany, HasOne, Profile, Schema, SchemaChild,
+    },
 };
 use thiserror::Error;
 
@@ -45,6 +47,8 @@ impl<'a> RelSpec<'a> {
 pub enum Error {
     #[error("no schema in entity \"{entity}\"")]
     NoSchemaInEntity { entity: String },
+    #[error("entity not found \"{entity}\"")]
+    EntityNotFound { entity: String },
     #[error("field \"{field}\" not found in entity \"{entity}\"")]
     FieldNotFoundInEntity { field: String, entity: String },
     #[error("unsopported query for field \"{field}\" in entity \"{entity}\"")]
@@ -87,6 +91,25 @@ impl<'a> QueryProvider<'a> {
         })
     }
 
+    pub fn schema(&self, name: &str) -> Result<&Schema, Error> {
+        for child in &self.app.children {
+            match child {
+                ApplicationChildren::Entity(entity) => {
+                    if entity.name == name {
+                        let schema = entity.schema().ok_or_else(|| Error::NoSchemaInEntity {
+                            entity: name.to_string(),
+                        })?;
+                        return Ok(&schema);
+                    }
+                }
+                _ => {}
+            }
+        }
+        Err(Error::EntityNotFound {
+            entity: name.to_owned(),
+        })
+    }
+
     pub fn field(&self, query: FieldQuery) -> Result<Field, Error> {
         for child in &self.app.children {
             match child {
@@ -112,7 +135,7 @@ impl<'a> QueryProvider<'a> {
                                 unique: Some(true),
                             }),
                             SchemaChild::Field(field) => Ok(field.clone()),
-                            _ => Err(Error::FieldNotFoundInEntity {
+                            _ => Err(Error::UnsupportedQueryForField {
                                 field: query.field.to_string(),
                                 entity: query.entity.to_string(),
                             }),
@@ -122,9 +145,8 @@ impl<'a> QueryProvider<'a> {
                 _ => {}
             }
         }
-        Err(Error::UnsupportedQueryForField {
-            field: query.field.to_string(),
-            entity: query.entity.to_string(),
+        Err(EntityNotFound {
+            entity: query.entity.to_owned(),
         })
     }
 }

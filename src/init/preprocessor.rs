@@ -6,8 +6,8 @@ use crate::init::{
     },
     types::{
         Application, Auth, AuthChildren, BelongsTo, Entity, EntityChildren, Field, HasMany, HasOne,
-        Listen, MethodChildren, On, Pk, Profile, Queries, QueriesChildren, Redirect, Role, Schema,
-        SchemaChild,
+        Listen, MethodChildren, On, Param, Pk, Profile, Queries, QueriesChildren, Redirect, Role,
+        Schema, SchemaChild,
     },
 };
 use regex::Regex;
@@ -320,23 +320,32 @@ pub fn process_schema(
     )
 }
 
+pub fn process_param(
+    location: &mut Location,
+    param: &mut Param,
+    index: usize,
+) -> Result<(), Error> {
+    with_location!(
+        Owned(format!("param${index}")),
+        {
+            process_name!(param.name, location);
+            process_type!(param.r#type, location);
+            Ok(())
+        },
+        location
+    )
+}
+
 pub fn process_method_children(
     location: &mut Location,
     method_children: &mut Vec<MethodChildren>,
 ) -> Result<(), Error> {
     for (index, child) in method_children.iter_mut().enumerate() {
-        with_location!(
-            Owned(format!("param${index}")),
-            {
-                match child {
-                    MethodChildren::Param(param) => {
-                        process_name!(param.name, location);
-                        process_type!(param.r#type, location);
-                    }
-                }
-            },
-            location
-        );
+        match child {
+            MethodChildren::Param(param) => {
+                process_param(location, param, index)?;
+            }
+        }
     }
     Ok(())
 }
@@ -427,6 +436,9 @@ pub fn process_role(location: &mut Location, role: &mut Role, index: usize) -> R
         Owned(format!("role${index}")),
         {
             process_name!(role.name, location);
+            for (index, child) in role.param.iter_mut().enumerate() {
+                process_param(location, child, index)?;
+            }
             Ok(())
         },
         location

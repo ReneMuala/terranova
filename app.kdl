@@ -7,6 +7,7 @@ application "Todo" version="0.1" license="MIT" email="renemuala@icloud.com" {
             pk "id" type="int"
             field "name" type="string" optional=true
             field "email" type="string"
+            field "password" type="string"
             has-many "Todo" as="tasks" on-delete="cascade"
         }
     }
