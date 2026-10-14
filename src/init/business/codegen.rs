@@ -7,10 +7,15 @@ pub enum Method {
     Delete,
 }
 
+pub enum DecoderType {
+    Body,
+    Query,
+}
+
 pub struct Endpoint {
-    route: String,
-    method: Method,
-    handler: String,
+    pub route: String,
+    pub method: Method,
+    pub handler: String,
 }
 
 pub struct Program {

@@ -221,10 +221,9 @@ impl Sqlite {
         let query = format!("INSERT INTO {name} ({insert_fields}) VALUES {value_bind_args};");
         Ok(SqlGenService::Crud {
             r#type: ServiceType::Create,
-            name: name.clone(),
             query,
             params,
-            entity: entity.name.clone(),
+            entity: name.clone(),
         })
     }
 
@@ -285,10 +284,9 @@ impl Sqlite {
         let query = format!("UPDATE {name} SET {update_fields} WHERE {pk_name} = ${param_len};");
         Ok(SqlGenService::Crud {
             r#type: ServiceType::Update,
-            name: name.clone(),
             query,
             params,
-            entity: entity.name.clone(),
+            entity: name.clone(),
         })
     }
 
@@ -320,8 +318,7 @@ impl Sqlite {
         Ok(SqlGenService::Crud {
             r#type: ServiceType::Read,
             query,
-            name: name.clone(),
-            entity: entity.name.clone(),
+            entity: name.clone(),
             params: vec![
                 Param::from_tuple(("limit".to_owned(), "int".to_owned())),
                 Param::from_tuple(("offset".to_owned(), "int".to_owned())),
@@ -370,10 +367,9 @@ impl Sqlite {
         let query = format!("DELETE {name} WHERE {pk_name} = ${param_len};");
         Ok(SqlGenService::Crud {
             r#type: ServiceType::Delete,
-            name: name.clone(),
             query,
             params,
-            entity: entity.name.clone(),
+            entity: name.clone(),
         })
     }
 

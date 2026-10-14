@@ -249,18 +249,18 @@ impl Program {
                 }
                 SqlGenService::Crud {
                     r#type,
-                    name,
                     query,
                     params,
                     entity,
                 }
                 | SqlGenService::Query {
                     r#type,
-                    name,
                     query,
                     params,
                     entity,
+                    ..
                 } => {
+                    let name = todo!();
                     let key: Option<u64> = {
                         if params.is_empty() {
                             None

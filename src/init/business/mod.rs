@@ -1,4 +1,4 @@
 mod c;
 mod codegen;
 
-pub use codegen::Method;
+pub use codegen::{DecoderType, Method};

@@ -1,5 +1,5 @@
 use crate::init::{
-    business::Method,
+    business::{DecoderType, Method},
     database::ServiceType::{Create, Delete, Read, Update},
     types::{Application, Entity, EntityChildren, Param, QueriesChildren, Schema},
 };
@@ -31,7 +31,6 @@ pub enum SqlGenService {
     },
     Crud {
         r#type: ServiceType,
-        name: String,
         query: String,
         entity: String,
         params: Vec<Param>,
@@ -46,7 +45,7 @@ pub enum SqlGenService {
 }
 
 impl SqlGenService {
-    pub fn values(&self) -> (&String, &Vec<Param>) {
+    pub fn query_and_params(&self) -> (&String, &Vec<Param>) {
         match self {
             SqlGenService::Login { query, params, .. }
             | SqlGenService::Crud { query, params, .. }
@@ -54,11 +53,22 @@ impl SqlGenService {
         }
     }
 
-    pub fn entity(&self) -> Option<&String> {
+    pub fn route(&self) -> String {
         match self {
-            SqlGenService::Login { .. } => None,
-            SqlGenService::Crud { entity, .. } | SqlGenService::Query { entity, .. } => {
-                Some(entity)
+            SqlGenService::Login { .. } => format!("/login"),
+            SqlGenService::Crud { entity, .. } => format!("/{entity}"),
+            SqlGenService::Query { name, entity, .. } => format!("/{entity}/{name}"),
+        }
+    }
+
+    pub fn decoder_type(&self) -> DecoderType {
+        match self {
+            SqlGenService::Login { .. } => DecoderType::Body,
+            SqlGenService::Crud { r#type, .. } | SqlGenService::Query { r#type, .. } => {
+                match r#type {
+                    Create | Update => DecoderType::Body,
+                    Read | Delete => DecoderType::Query,
+                }
             }
         }
     }
