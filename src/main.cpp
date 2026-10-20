@@ -505,9 +505,13 @@ void collect_int(const char *name, void *output_buffer, void *input_buffer) {
 }
 
 void collect_float(const char *name, void *output_buffer, void *input_buffer) {
-    if (name && output_buffer && input_buffer)
+    if (name && output_buffer && input_buffer){
         *static_cast<float *>(output_buffer) =
             yyjson_get_real(yyjson_obj_get(static_cast<yyjson_val *>(input_buffer), name));
+        if(*static_cast<float *>(output_buffer) == 0.0) {
+            *static_cast<float *>(output_buffer) = yyjson_get_int(yyjson_obj_get(static_cast<yyjson_val *>(input_buffer), name));
+        }
+    }
 }
 
 void collect_bool(const char *name, void *output_buffer, void *input_buffer) {
@@ -1425,7 +1429,7 @@ void server_mode(const std::string filename, const std::string profile, bool wri
     }
     apps.clear();
     // hks::test();
-    drogon::app().setServerHeaderField("terranova@drogon/" + drogon::getVersion()).run();
+    drogon::app().setServerHeaderField("terranova@drogon/" + drogon::getVersion()).addALocation("/public/", "", "public/").run();
     service::free_all_tracked_malloc();
 }
 
